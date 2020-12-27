@@ -3,5 +3,5 @@
 
 CS-VINS is an sparisification-based system which is an extension to VINS; This system is motivated by preserving sparse and nonlinear information after marginalization and simplifying VIO scheme rather than perserving linearied prior that ordinary fixed-lag smoother shares;
 
-***Authors***: Jixiang Ma(unicorn@hust.edu.cn),Suijun Zheng(),Yong Xie(xyhust@hust.edu.cn)
+***Authors***: Jixiang Ma(unicorn@hust.edu.cn),Suijun Zheng(Jenny888@hust.edu.cn),Yong Xie(xyhust@hust.edu.cn)
 
