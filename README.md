@@ -5,17 +5,17 @@
 
 ***To repay the SLAM community, please feel free to ask me for the detail before the paper released.***
 
---:Followings are some important work in this project:
+Followings are main contributions in this work:
 
 1. Frontend is optic flow based method just like VINS-MONO but simplified.
 
-2. VIO stage is performed in two stage marginalization and sparsification,which turns VIO to be a combanation of VO with gravity observation and VIO.
+2. VIO is performed in two stage marginalization and sparsification,which turns VIO to be a combanation of VO with gravity observation and VIO.
 
 3. Pose graph optimization reuses information of VO with gravity observation and performs with loop-closure information. So it's able to fetch covariance of viechle or camera online. 
 
-***Authors***: Jixiang Ma(unicorn@hust.edu.cn)
+***Authors：***: Jixiang Ma(unicorn@hust.edu.cn)
 
-**Related Papers**
+**Related Papers：**
 
 **To be released soon**, Jixiang Ma, Suijun Zheng,Yong Xie. IEEE/RSJ Robotics and Automation Letters,In Press.
 
