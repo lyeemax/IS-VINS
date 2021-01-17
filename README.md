@@ -15,7 +15,7 @@ Followings are main contributions in this work:
 
 <img src="https://github.com/lyeemax/IS-VINS/blob/main/others/image1.png" alt="euroc_MH_05" width="240" height="180" border="10" /><br/>
 
-***Authors：***: Jixiang Ma(unicorn@hust.edu.cn)
+***Authors：***: Jixiang Ma(unicorn@hust.edu.cn) also seeking for a job in SLAM、VIO
 
 **Related Papers：**
 
