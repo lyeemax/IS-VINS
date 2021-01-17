@@ -19,4 +19,21 @@ Followings are main contributions in this work:
 
 **To be released soon**, Jixiang Ma, Suijun Zheng,Yong Xie. IEEE/RSJ Robotics and Automation Letters,In Press.
 
+Installation
+------------
+We tested this code with ubuntu 18.04 with Ceres 2.0.0,Eigen 3.3.4,OpenCV 3.2.0 and Pangolin.
+```
+  $ git clone https://github.com/lyeemax/IS-VINS.git
+  $ mkdir build  
+  $ cd build/  
+  $ cmake ..
+  $ make -j 9  
+```
+
+Evaluate Euroc Dataset
+------------
+Download EuRoc Mav dataset and extract zips. Open a terminal with parameters of dataset path and config files:
+```
+  $ ./run_euroc PATH_TO_EUROC/mav0/ ../config/ 
+```
 
