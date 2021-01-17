@@ -11,7 +11,9 @@ Followings are main contributions in this work:
 
 2. VIO is performed in two stage marginalization and sparsification,which turns VIO to be a combanation of VO and VIO.
 
-3. Pose graph optimization reuses information of VO with gravity observation and relative pose prior and performs with loop-closure information. So it's able to fetch covariance of viechle or camera pose online. 
+3. Pose graph optimization reuses information of VO with gravity observation and relative pose prior and performs with loop-closure information. So it's able to evaluate covariance of camera pose online. 
+
+![image](https://github.com/lyeemax/IS-VINS/blob/main/others/image1.png width="240" height="180" border="10")
 
 ***Authors：***: Jixiang Ma(unicorn@hust.edu.cn)
 
