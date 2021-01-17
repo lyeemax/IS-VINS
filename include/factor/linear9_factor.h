@@ -10,7 +10,6 @@ public:
     Linear9Factor() = delete;
 
     Linear9Factor(const Matrix<double,9,1> VB_,ceres::Ownership ownership=ceres::DO_NOT_TAKE_OWNERSHIP):VB(VB_) {
-        linearized=false;
         jacobians.resize(1);
         residual.resize(9,1);
     }
@@ -31,22 +30,11 @@ public:
         residual=VB_-VB;
         residual=sqrt_info*residual;
 
-//        double error=residual.transpose()*residual;
-//        if(error>0.01) {
-//            cerr << "residual of VB prior of " << index << " +++: " << error << endl;
-//        }
         if (jacobians){
             if (jacobians[0]) {
-                if(linearized){
-                    Eigen::Map<Eigen::Matrix<double, 9, 9, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
-                    jacobian_pose_i.setZero();
-                    jacobian_pose_i=this->jacobians[0];
-                    jacobian_pose_i=sqrt_info*jacobian_pose_i;
-                }else{
-                    Eigen::Map<Eigen::Matrix<double, 9, 9, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
-                    jacobian_pose_i.setIdentity();
-                    jacobian_pose_i=sqrt_info*jacobian_pose_i;
-                }
+                Eigen::Map<Eigen::Matrix<double, 9, 9, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
+                jacobian_pose_i.setIdentity();
+                jacobian_pose_i=sqrt_info*jacobian_pose_i;
 
             }
 
@@ -66,16 +54,22 @@ public:
         I99.setIdentity();
 
         jacobians[0]=I99;
-        if(!Nscheck){
-            linearized=0;
-        }
 
+    }
+
+    void update(Eigen::Vector3d &Vi,Eigen::Vector3d &Bai,Eigen::Vector3d &Bgi,const double *speedBias){
+        Eigen::Matrix<double,9,1> VB0,VB1;
+        VB0<<Vi,Bai,Bgi;
+        VB1<<speedBias[0],speedBias[1],speedBias[2],
+                speedBias[3],speedBias[4],speedBias[5],
+                speedBias[6],speedBias[7],speedBias[8];
+        Eigen::MatrixXd delta=VB1-VB0;
+        VB+=delta;
     }
     Matrix<double,9,1> VB;
     MatrixXd sqrt_info;
     vector<MatrixXd> jacobians;
     int index;
-    bool linearized;
     VectorXd residual;
 };
 #endif //CS_VINS_LINEAR9_FACTOR_H

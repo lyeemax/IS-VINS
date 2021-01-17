@@ -16,7 +16,6 @@ public:
     RelativePoseFactor() = delete;
 
     RelativePoseFactor(const Vector3d delta_t_,const Matrix3d delta_R_) :delta_R(delta_R_),delta_t(delta_t_) {
-        linearized=false;
         jacobians.resize(2);
         residual.resize(6,1);
     }
@@ -43,43 +42,23 @@ public:
         residual.tail<3>()=res_R.log();
 
         residual=sqrt_info*residual;
-//        double error=residual.transpose()*residual;
-//        if(error>1) {
-//            cerr << "residual of relative pose of " << imu_i << " and " << imu_j << " +++: "
-//                 << error<< endl;
-//        }
 
         if (jacobians){
             Matrix3d J;
             Sophus::rightJacobianInvSO3(res_R.log(),J);
             if (jacobians[0]) {
-                if(linearized){
-                    Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
-                    jacobian_pose_i.setZero();
-                    jacobian_pose_i.topLeftCorner<6,6>()=this->jacobians[0];
-                    jacobian_pose_i=sqrt_info*jacobian_pose_i;
-                    jacobian_pose_i=sqrt_info*jacobian_pose_i;
-                }else{
-                    Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
-                    jacobian_pose_i.setZero();
-                    jacobian_pose_i.block<3,3>(0,0)=Matrix3d::Identity();
-                    jacobian_pose_i.block<3,3>(3,3)=J;
-                    jacobian_pose_i=sqrt_info*jacobian_pose_i;
-                }
+                Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
+                jacobian_pose_i.setZero();
+                jacobian_pose_i.block<3,3>(0,0)=Matrix3d::Identity();
+                jacobian_pose_i.block<3,3>(3,3)=J;
+                jacobian_pose_i=sqrt_info*jacobian_pose_i;
             }
             if(jacobians[1]){
-                if(linearized){
-                    Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_j(jacobians[1]);
-                    jacobian_pose_j.setZero();
-                    jacobian_pose_j.topLeftCorner<6,6>()=this->jacobians[1];
-                    jacobian_pose_j=sqrt_info*jacobian_pose_j;
-                }else{
-                    Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_j(jacobians[1]);
-                    jacobian_pose_j.setZero();
-                    jacobian_pose_j.block<3,3>(0,0)=-Matrix3d::Identity();
-                    jacobian_pose_j.block<3,3>(3,3)=-J*Ri.transpose()*Rj;
-                    jacobian_pose_j=sqrt_info*jacobian_pose_j;
-                }
+                Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_j(jacobians[1]);
+                jacobian_pose_j.setZero();
+                jacobian_pose_j.block<3,3>(0,0)=-Matrix3d::Identity();
+                jacobian_pose_j.block<3,3>(3,3)=-J*Ri.transpose()*Rj;
+                jacobian_pose_j=sqrt_info*jacobian_pose_j;
 
             }
 
@@ -116,9 +95,25 @@ public:
         jacobian_pose_j.block<3,3>(0,0)=-Matrix3d::Identity();
         jacobian_pose_j.block<3,3>(3,3)=-J*Ri.transpose()*Rj;
         jacobians[1]=jacobian_pose_j;
-        if(!Nscheck){
-            linearized=0;
-        }
+
+    }
+
+    void update(Vector3d ti,Matrix3d Ri,Vector3d tj,Matrix3d Rj,double *PSi,double *PSj){
+//        Vector3d tij=Psj-Psi;
+//        Matrix3d Rij=(Qi.inverse()*Qj).toRotationMatrix();
+        Eigen::Vector3d Pi(PSi[0], PSi[1], PSi[2]);
+        Eigen::Quaterniond Qi(PSi[6], PSi[3], PSi[4], PSi[5]);
+        Eigen::Vector3d Pj(PSj[0], PSj[1], PSj[2]);
+        Eigen::Quaterniond Qj(PSj[6], PSj[3], PSj[4], PSj[5]);
+        Vector3d d_tj=Pj-tj;
+        Vector3d d_ti=Pi-ti;
+        Sophus::SO3d d_Rj=Sophus::SO3d(Qj.inverse()*Rj);
+        Sophus::SO3d d_Ri=Sophus::SO3d(Qi.inverse()*Ri);
+
+        delta_t+=d_tj-d_ti;
+        MatrixXd Ji=-(Qj.inverse()*Qi).toRotationMatrix();
+        delta_R=delta_R*Sophus::SO3d::exp(Ji*d_Ri.log()).matrix();
+        delta_R=delta_R*Sophus::SO3d::exp(d_Rj.log()).matrix();
     }
     void shift(){
         imu_i--;
@@ -175,8 +170,6 @@ public:
         Ja.topLeftCorner<6,6>()=jacobian_pose_i.topLeftCorner<6,6>();
         Ja.bottomRightCorner<6,6>()=jacobian_pose_j.topLeftCorner<6,6>();
 
-        auto zero=Ja-J;
-
         cout<<"zero test in RelativePoseFactor"<<endl;
         cout<<Ja<<endl;
         cout<<"----------------------------"<<endl;
@@ -184,9 +177,6 @@ public:
         return true;
     }
 
-    void setGlobalIndex(int index){
-        global_index=index;
-    }
 
 
     Vector3d delta_t;
@@ -194,8 +184,6 @@ public:
     MatrixXd sqrt_info;
     vector<MatrixXd> jacobians;
     int imu_i,imu_j;
-    int global_index;
-    bool linearized;
     VectorXd residual;
 };
 

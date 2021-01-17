@@ -3,22 +3,12 @@
 #include <fstream>
 #include <Eigen/Dense>
 #include <Eigen/Eigenvalues>
-
+#include "utility/eigen_file.h"
 using namespace Eigen;
-
-MatrixXd extractInfo(MatrixXd &info){
-    double eps=1e-8;
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> Solver(info);
-    Eigen::MatrixXd Omega = Solver.eigenvectors() *
-                            Eigen::VectorXd((Solver.eigenvalues().array() > eps).select(Solver.eigenvalues().array().inverse(), 0)).asDiagonal() *
-                            Solver.eigenvectors().transpose();
-    return Eigen::LLT<Eigen::MatrixXd>(Omega).matrixL().transpose();
-}
+double eps=1e-16;
 
 Estimator::Estimator() : f_manager{Rs}
 {
-    // ROS_INFO("init begins");
-
     for (size_t i = 0; i < ALL_BUF_SIZE; i++)
     {
         pre_integrations[i] = nullptr;
@@ -39,12 +29,10 @@ void Estimator::setParameter()
     {
         tic[i] = TIC[i];
         ric[i] = RIC[i];
-        // cout << "1 Estimator::setParameter tic: " << tic[i].transpose()
-        //     << " ric: " << ric[i] << endl;
     }
     cout << "1 Estimator::setParameter FOCAL_LENGTH: " << FOCAL_LENGTH << endl;
     f_manager.setRic(ric);
-    ProjectionFactor::sqrt_info = FOCAL_LENGTH / 1.5 * Matrix2d::Identity();
+    ProjectionFactor::sqrt_info = PIXEL_SQRT_INFO* Matrix2d::Identity();
     td = TD;
 }
 
@@ -98,13 +86,6 @@ void Estimator::clearState()
     tmp_pre_integration = nullptr;
 
     f_manager.clearState();
-
-    failure_occur = 0;
-    failure_occur = 0;
-    relocalization_info = 0;
-
-    drift_correct_r = Matrix3d::Identity();
-    drift_correct_t = Vector3d::Zero();
 }
 
 void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const Vector3d &angular_velocity)
@@ -123,7 +104,6 @@ void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const
     if (frame_count != 0)
     {
         pre_integrations[frame_count]->push_back(dt, linear_acceleration, angular_velocity);
-        //if(solver_flag != NON_LINEAR)
         tmp_pre_integration->push_back(dt, linear_acceleration, angular_velocity);
 
         dt_buf[frame_count].push_back(dt);
@@ -145,14 +125,10 @@ void Estimator::processIMU(double dt, const Vector3d &linear_acceleration, const
 
 void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double header)
 {
-    //ROS_DEBUG("new image coming ------------------------------------------");
-    // cout << "Adding IDsfeatures points: " << image.size()<<endl;
     if (f_manager.addFeatureAndCheckParallax(frame_count, image, td))
         marginalization_flag = MARGIN_OLD;
     else
         marginalization_flag = MARGIN_NEW;
-    //cout<<"frame_count "<<frame_count<<endl;
-    //cout << "number of IDsfeatures: " << f_manager.getFeatureCount()<<endl;
     Headers[frame_count] = header;
 
     ImageFrame imageframe(image, header);
@@ -169,9 +145,6 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
             Matrix3d calib_ric;
             if (initial_ex_rotation.CalibrationExRotation(corres, pre_integrations[frame_count]->delta_q, calib_ric))
             {
-                // ROS_WARN("initial extrinsic rotation calib success");
-                // ROS_WARN_STREAM("initial extrinsic rotation: " << endl
-                                                            //    << calib_ric);
                 ric[0] = calib_ric;
                 RIC[0] = calib_ric;
                 ESTIMATE_EXTRINSIC = 1;
@@ -186,7 +159,6 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
             bool result = false;
             if (ESTIMATE_EXTRINSIC != 2 && (header - initial_timestamp) > 0.1)
             {
-                // cout << "1 initialStructure" << endl;
                 result = initialStructure();
                 initial_timestamp = header;
             }
@@ -213,23 +185,19 @@ void Estimator::processImage(const map<int, vector<pair<int, Eigen::Matrix<doubl
     {
         TicToc t_solve;
         solveOdometry();
-        //ROS_DEBUG("solver costs: %fms", t_solve.toc());
 
         if (failureDetection())
         {
-            // ROS_WARN("failure detection!");
             failure_occur = 1;
             clearState();
             setParameter();
             cout<<"detected failure"<<endl;
-            // ROS_WARN("system reboot!");
             return;
         }
 
         TicToc t_margin;
         slideWindow();
         f_manager.removeFailures();
-        //ROS_DEBUG("marginalization costs: %fms", t_margin.toc());
         // prepare output of VINS
         key_poses.clear();
         for (int i = 0; i <= ALL_BUF_SIZE-1; i++)
@@ -394,7 +362,6 @@ bool Estimator::visualInitialAlign()
     bool result = VisualIMUAlignment(all_image_frame, Bgs, g, x);
     if (!result)
     {
-        //ROS_DEBUG("solve g failed!");
         return false;
     }
 
@@ -458,9 +425,6 @@ bool Estimator::visualInitialAlign()
         Rs[i] = rot_diff * Rs[i];
         Vs[i] = rot_diff * Vs[i];
     }
-    //ROS_DEBUG_STREAM("g0     " << g.transpose());
-    //ROS_DEBUG_STREAM("my R0  " << Utility::R2ypr(Rs[0]).transpose());
-
     return true;
 }
 
@@ -582,6 +546,9 @@ void Estimator::double2vector()
                                .transpose();
     }
 
+    vioVBPrior->VB.tail<3>()=rot_diff*vioVBPrior->VB.tail<3>();
+    vioPosePriorEdge->R=rot_diff*vioPosePriorEdge->R;
+
     for (int i = 0; i <= ALL_BUF_SIZE-1; i++)
     {
 
@@ -624,36 +591,6 @@ void Estimator::double2vector()
     if (ESTIMATE_TD)
         td = para_Td[0][0];
 
-    // relative info between two loop frame
-    if(relocalization_info)
-    {
-        Matrix3d relo_r;
-        Vector3d relo_t;
-        relo_r = rot_diff * Quaterniond(relo_Pose[6], relo_Pose[3], relo_Pose[4], relo_Pose[5]).normalized().toRotationMatrix();
-        relo_t = rot_diff * Vector3d(relo_Pose[0] - para_Pose[0][0],
-                                     relo_Pose[1] - para_Pose[0][1],
-                                     relo_Pose[2] - para_Pose[0][2]) + origin_P0;
-        double drift_correct_yaw;
-        drift_correct_yaw = Utility::R2ypr(prev_relo_r).x() - Utility::R2ypr(relo_r).x();
-        drift_correct_r = Utility::ypr2R(Vector3d(drift_correct_yaw, 0, 0));
-        drift_correct_t = prev_relo_t - drift_correct_r * relo_t;
-        relo_relative_t = relo_r.transpose() * (Ps[relo_frame_local_index] - relo_t);
-        relo_relative_q = relo_r.transpose() * Rs[relo_frame_local_index];
-        relo_relative_yaw = Utility::normalizeAngle(Utility::R2ypr(Rs[relo_frame_local_index]).x() - Utility::R2ypr(relo_r).x());
-        //cout << "vins relo " << endl;
-        //cout << "vins relative_t " << relo_relative_t.transpose() << endl;
-        //cout << "vins relative_yaw " <<relo_relative_yaw << endl;
-        m_loop_buf.lock();
-        Eigen::Matrix<double, 8, 1 > loop_info;
-        loop_info << relo_relative_t.x(), relo_relative_t.y(), relo_relative_t.z(),
-                relo_relative_q.w(), relo_relative_q.x(), relo_relative_q.y(), relo_relative_q.z(),
-                relo_relative_yaw;
-        loop_buf.push(make_pair(relo_frame_local_index,loop_info));
-        m_loop_buf.unlock();
-        relocalization_info = 0;
-
-    }
-
 }
 
 bool Estimator::failureDetection()
@@ -685,12 +622,12 @@ bool Estimator::failureDetection()
     if ((tmp_P - last_P).norm() > 5)
     {
         cout<<" big translation"<<endl;
-        failed= true;
+        //failed= true;
     }
     if (abs(tmp_P.z() - last_P.z()) > 1)
     {
         cout<<" big z translation"<<endl;
-        failed= true;
+        //failed= true;
     }
     Matrix3d tmp_R = Rs[ALL_BUF_SIZE-1];
     Matrix3d delta_R = tmp_R.transpose() * last_R;
@@ -700,7 +637,7 @@ bool Estimator::failureDetection()
     if (delta_angle > 50)
     {
         cout<<" big delta_angle "<<endl;
-        failed= true;
+        //failed= true;
     }
     if(failed){
         //debug
@@ -722,7 +659,7 @@ bool Estimator::failureDetection()
 
         cout<<"debug speed and bias prior factor"<<endl;
         cout<<vioVBPrior->sqrt_info.transpose()*vioVBPrior->sqrt_info<<endl;
-        return true;
+        //return true;
     }
     return false;
 }
@@ -750,7 +687,6 @@ void Estimator::initFactorGraph(){
         problem.AddParameterBlock(para_Ex_Pose[i], SIZE_POSE, local_parameterization);
         if (!ESTIMATE_EXTRINSIC)
         {
-            //ROS_DEBUG("fix extinsic param");
             problem.SetParameterBlockConstant(para_Ex_Pose[i]);
         }
     }
@@ -765,11 +701,9 @@ void Estimator::initFactorGraph(){
             imu_factor->setIndex(i,j);
             factors2Sparsify.push_back(imu_factor);
         }
-
         problem.AddResidualBlock(imu_factor, NULL, para_Pose[i], para_SpeedBias[i], para_Pose[j], para_SpeedBias[j]);
     }
 
-    int f_m_cnt = 0;
     int feature_index = -1;
     for (auto &idFeatures : f_manager.IDsfeatures)
     {
@@ -794,21 +728,22 @@ void Estimator::initFactorGraph(){
             ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
             f->setIndex(imu_i,imu_j,feature_index);
             problem.AddResidualBlock(f, loss_function, para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index]);
-            f_m_cnt++;
         }
     }
 
     ceres::Solver::Options options;
 
     options.linear_solver_type = ceres::DENSE_SCHUR;
-    //options.num_threads = 2;
+    options.num_threads = 2;
     options.trust_region_strategy_type = ceres::DOGLEG;
-    options.max_num_iterations = NUM_ITERATIONS;
-    options.max_solver_time_in_seconds = SOLVER_TIME;
+    options.max_num_iterations = NUM_ITERATIONS*3;
+    options.max_solver_time_in_seconds = 1;
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-    //cout << summary.BriefReport() << endl;
+    cout << summary.BriefReport() << endl;
 
+    //OrderMap
+    //T0 T1.....Tvo VBvo VB0 VB1... VBv0-1
     std::unordered_map<double *,pair<int,int>> OrderMap;
     int idx=0;
     for (int i = 0; i < Vo_SIZE ; ++i) {
@@ -822,71 +757,66 @@ void Estimator::initFactorGraph(){
         idx+=9;
     }
 
+//    std::unordered_map<double *,pair<int,int>> OrderMap;
+//    int idx=0;
+//    for (int i = 0; i < Vo_SIZE ; ++i) {
+//        OrderMap[para_Pose[i]]=make_pair(idx,6);
+//        idx+=6;
+//        OrderMap[para_SpeedBias[i]]=make_pair(idx,9);
+//        idx+=9;
+//    }
+
 
     MatrixXd Lamda;
     Lamda.resize(Vo_SIZE * 15, Vo_SIZE * 15);
     Lamda.setZero();
     assert(factors2Sparsify.size() == Vo_SIZE - 1);
     for (int i = 0; i <factors2Sparsify.size() ; ++i) {
-        IMUFactor* factor= factors2Sparsify[i];
-        int imu_i=factor->imu_i;
-        int imu_j=factor->imu_j;
-
-        factor->Evaluate(para_Pose[imu_i],para_SpeedBias[imu_i],para_Pose[imu_j],para_SpeedBias[imu_j]);
-        vector<MatrixXd> jacobians=factor->jacobians;
-        MatrixXd robustInfo=factor->sqrt_info.transpose()*factor->sqrt_info;
+        auto imufactor= factors2Sparsify[i];
+        int imu_i=imufactor->imu_i;
+        int imu_j=imufactor->imu_j;
+        imufactor->Evaluate(para_Pose[imu_i],para_SpeedBias[imu_i],para_Pose[imu_j],para_SpeedBias[imu_j]);
+        vector<MatrixXd> jacobiansI=imufactor->jacobians;
+        MatrixXd omegaI=imufactor->sqrt_info.transpose()*imufactor->sqrt_info;
+        //cout<<"my omegaI"<<endl<<omegaI.eigenvalues().real()<<endl;
         vector<double *> ParamMap;
         ParamMap.push_back(para_Pose[imu_i]);
         ParamMap.push_back(para_SpeedBias[imu_i]);
         ParamMap.push_back(para_Pose[imu_j]);
         ParamMap.push_back(para_SpeedBias[imu_j]);
-        
         for (int j = 0; j <ParamMap.size() ; ++j) {
             auto v_j=OrderMap[ParamMap[j]];
             int index_j=v_j.first;
             int dim_j=v_j.second;
-            MatrixXd JtW = jacobians[j].transpose() * robustInfo;
+            MatrixXd JtW = jacobiansI[j].transpose() * omegaI;
             for (int k = j; k <ParamMap.size() ; ++k) {
                 auto v_k=OrderMap[ParamMap[k]];
                 int index_k=v_k.first;
                 int dim_k=v_k.second;
-                MatrixXd hessian = JtW * jacobians[k];
+                MatrixXd hessian = JtW * jacobiansI[k];
                 Lamda.block(index_j, index_k, dim_j, dim_k).noalias() += hessian;
                 if (j != k) {
                     Lamda.block(index_k, index_j, dim_k, dim_j).noalias() += hessian.transpose();
-
                 }
             }
         }
     }
 
 
+    //cout<<Lamda.eigenvalues().real()<<endl;
+
     int t_psvb_dim= Vo_SIZE * 6 + 9;
     int t_vbs_dim= (Vo_SIZE - 1) * 9;
 
-    double eps=1e-8;
     Eigen::MatrixXd Lamda_rr=Lamda.block(0, 0, t_psvb_dim, t_psvb_dim);
     Eigen::MatrixXd Lamda_mm=Lamda.block(t_psvb_dim, t_psvb_dim, t_vbs_dim, t_vbs_dim);
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> initSolver(Lamda_mm);
-    Eigen::MatrixXd Lamda_mm_inv = initSolver.eigenvectors() *
-            Eigen::VectorXd((initSolver.eigenvalues().array() > eps).select(initSolver.eigenvalues().array().inverse(), 0)).asDiagonal()
-            *initSolver.eigenvectors().transpose();
+
+    Eigen::MatrixXd Lamda_mm_inv = Lamda_mm.fullPivLu().solve(Eigen::MatrixXd::Identity(t_vbs_dim, t_vbs_dim));
     Eigen::MatrixXd Lamda_rm=Lamda.block(0, t_psvb_dim, t_psvb_dim, t_vbs_dim);
-    auto Lamda_prior= Lamda_rr - Lamda_rm * Lamda_mm_inv * Lamda_rm.transpose();
+    Eigen::MatrixXd Lamda_prior= Lamda_rr - Lamda_rm * Lamda_mm_inv * Lamda_rm.transpose();
     assert(Lamda_prior.rows() == Vo_SIZE * 6 + 9);
 
-//    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> qr(Lamda_prior);
-//    qr.setThreshold(eps);
-//    cout << "Initial Information  has rank " << qr.rank() << " with rows and cols " << Lamda_prior.rows() << endl;
-
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> covSolver(Lamda_prior);
-    Eigen::VectorXd S = Eigen::VectorXd((covSolver.eigenvalues().array() > eps).select(covSolver.eigenvalues().array(), 0));
-    Eigen::VectorXd S_inv = Eigen::VectorXd(
-            (covSolver.eigenvalues().array() > eps).select(covSolver.eigenvalues().array().inverse(), 0));
-
-    MatrixXd U=covSolver.eigenvectors();
-    MatrixXd cov=S_inv.asDiagonal();
-
+    int asize=Vo_SIZE * 6 + 9;
     //keep relative position factor
     vioRelativePoseEdges[0]= nullptr;
     for (int i = 0; i < Vo_SIZE - 1 ; ++i) {
@@ -982,38 +912,82 @@ void Estimator::initFactorGraph(){
         rows+=Jrow;
     }
 
+//    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> Jqr(Jr);
+//    if(Jqr.rank()<Jr.cols()){
+//        cerr<<"Jacobian of initial recovered factor is rank-deficient"<<endl;
+//    }
 
-    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> Jqr(Jr);
-    if(Jqr.rank()<Jr.rows()){
-        cerr<<"Jacobian of initial recovered factor is rank-deficient"<<endl;
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> covSolver(Lamda_prior);
+    vector<int> vset;
+    for (int i = 0; i <covSolver.eigenvalues().real().size() ; ++i) {
+        if(covSolver.eigenvalues().real()(i)>ALPHA){
+            vset.push_back(i);
+        }
     }
+    int rank=vset.size();
+    //cout<<"rank: "<<rank<<endl;
+    MatrixXd U;
+    MatrixXd D;
+    D.resize(rank,rank);
+    U.resize(asize,rank);
+    U.setZero();
+    D.setZero();
+    for (int i = 0; i <vset.size() ; ++i) {
+        U.col(i)=covSolver.eigenvectors().real().col(vset[i]);
+        D.block<1,1>(i,i)=covSolver.eigenvalues().real().row(vset[i]);
+    }
+    //cout<<"D matrix"<<endl<<D<<endl;
+    MatrixXd Dinv=D.inverse();
 
-    //set information for each edge
-
+    vector<pair<Eigen::MatrixXd,int>> infoVec;
     int hdim=0;
     for (int i = 1; i < vioRelativePoseEdges.size() ; ++i) {
         int row=vioRelativePoseEdges[i]->num_residuals();
         MatrixXd Ji=Jr.block(hdim,0,row, 6 * Vo_SIZE + 9);
-        MatrixXd covi=(Ji * U * cov * (Ji * U).transpose());
-        vioRelativePoseEdges[i]->sqrt_info=extractInfo(covi);
+        MatrixXd covi=(Ji * U * Dinv * (Ji * U).transpose());
+        infoVec.emplace_back(covi.inverse(),hdim);
+        cout<<"vioRelativePose "<<endl<<covi.inverse()<<endl;
+        vioRelativePoseEdges[i]->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(covi.inverse()).matrixL().transpose();
         hdim+=row;
     }
 
     {
         int row = vioPosePriorEdge->num_residuals();
         MatrixXd Ji=Jr.block(hdim,0,row, 6 * Vo_SIZE + 9);
-        MatrixXd covi=(Ji * U * cov * (Ji * U).transpose());
-        vioPosePriorEdge->sqrt_info=extractInfo(covi);
+        MatrixXd covi=(Ji * U * Dinv * (Ji * U).transpose());
+        infoVec.emplace_back(covi.inverse(),hdim);
+        cout<<"vioPosePrior "<<endl<<covi.inverse()<<endl;
+        vioPosePriorEdge->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(covi.inverse()).matrixL().transpose();
         hdim+=row;
     }
 
     {
         int row = vioVBPrior->num_residuals();
         MatrixXd Ji=Jr.block(hdim,0,row, 6 * Vo_SIZE + 9);
-        MatrixXd covi=(Ji * U * cov * (Ji * U).transpose());
-        vioVBPrior->sqrt_info=extractInfo(covi);
+        MatrixXd covi=(Ji * U * Dinv * (Ji * U).transpose());
+        infoVec.emplace_back(covi.inverse(),hdim);
+        cout<<"vioVBPrior "<<endl<<covi.inverse()<<endl;
+        vioVBPrior->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(covi.inverse()).matrixL().transpose();
         hdim+=row;
     }
+
+    //test equality
+    Eigen::MatrixXd X;
+    X.resize(hdim,hdim);
+    X.setZero();
+    for (int i = 0; i <infoVec.size() ; ++i) {
+        X.block(infoVec[i].second,infoVec[i].second,infoVec[i].first.rows(),infoVec[i].first.rows())+=infoVec[i].first;
+    }
+    //test KLD
+    MatrixXd A=(Jr*U).transpose()*X*Jr*U;
+    //cout<<"zero test"<<endl<<A-D<<endl;
+    double a=(A*Dinv).trace();
+    double b=log(A.determinant());
+    double c=log(Dinv.determinant());
+    double kld=0.5*(a-b-c-asize);
+    cout<<"init KLD is "<<kld<<endl;
+
+
 
     int drop_size=factors2Sparsify.size();
     for (int i = 0; i <drop_size ; ++i) {
@@ -1023,18 +997,12 @@ void Estimator::initFactorGraph(){
 
 
     double2vector();
-//test KLD
-//    double a=(A_nfr*cov).trace();
-//    double b= log(Lamda_rr.determinant()) - log(A_nfr.determinant());
-//    double kld=0.5*(a + b - Lamda_rr.rows());
-//    cout<<"init KLD is "<<kld<<endl;
+
 }
 
 
 void Estimator::problemSolve()
 {
-    bool checkNullSpace=false;
-    vector<ceres::CostFunction*> factors;
     if(!forwardProjectiontoSparsify.empty()){
         for (int i = 0; i <forwardProjectiontoSparsify.size() ; ++i) {
             delete forwardProjectiontoSparsify[i];
@@ -1047,8 +1015,9 @@ void Estimator::problemSolve()
 
     ceres::Problem problem(problemOptions);
     ceres::LossFunction *loss_function;
-    ceres::LossFunction *bigloss = new ceres::CauchyLoss(0.3);
     loss_function = new ceres::CauchyLoss(1.0);
+    ceres::LossFunction *bigloss;
+    bigloss = new ceres::CauchyLoss(0.5);
 
     for (int i = 0; i < ALL_BUF_SIZE; i++)
     {
@@ -1063,20 +1032,17 @@ void Estimator::problemSolve()
         problem.AddParameterBlock(para_Ex_Pose[i], SIZE_POSE, local_parameterization);
         if (!ESTIMATE_EXTRINSIC)
         {
-            //ROS_DEBUG("fix extinsic param");
             problem.SetParameterBlockConstant(para_Ex_Pose[i]);
         }
     }
 
-    for (int i = Vo_SIZE - 1; i < ALL_BUF_SIZE - 1; i++)
+//    for (int i = Vo_SIZE - 1; i < ALL_BUF_SIZE - 1; i++)
+    for (int i = 0; i < ALL_BUF_SIZE - 1; i++)
     {
         int j = i + 1;
         if (pre_integrations[j]->sum_dt > 10.0)
             continue;
-        IMUFactor* imu_factor =new IMUFactor(pre_integrations[j]);
-        if(checkNullSpace){
-            factors.push_back(imu_factor);
-        }
+        IMUFactor *imu_factor=new IMUFactor(pre_integrations[j]);
         imu_factor->setIndex(i,j);
         if(i == Vo_SIZE - 1){
             backwardIMUtoSparsify=imu_factor;
@@ -1120,9 +1086,6 @@ void Estimator::problemSolve()
                 marglandmarks++;
             }
 
-            if(checkNullSpace){
-                factors.push_back(f);
-            }
             problem.AddResidualBlock(f, loss_function, para_Pose[imu_i], para_Pose[imu_j], para_Ex_Pose[0], para_Feature[feature_index]);
             f_m_cnt++;
         }
@@ -1135,67 +1098,22 @@ void Estimator::problemSolve()
 //    cout<<"avgera is "<<avg/double(stat.size())<<endl;
     //cout<<marglandmarks<<" landmarks marginalized"<<endl;
 
-    //add head pose factor
+    //add head pose factor#TODO BAD FACTOR!!!
     problem.AddResidualBlock(vioPosePriorEdge, bigloss, para_Pose[0]);
 
     //add VB prior factor
-    problem.AddResidualBlock(vioVBPrior, loss_function, para_SpeedBias[Vo_SIZE - 1]);
+    problem.AddResidualBlock(vioVBPrior, bigloss, para_SpeedBias[Vo_SIZE - 1]);
 
-    if(checkNullSpace){
-        factors.push_back(vioPosePriorEdge);
-        factors.push_back(vioVBPrior);
-
-    }
     //add relative pose factor
     for (int i = 0; i < vioRelativePoseEdges.size() - 1 ; ++i) {
         int j=i+1;
         auto factor=vioRelativePoseEdges[j];
         problem.AddResidualBlock(factor,bigloss,para_Pose[i],para_Pose[j]);
-        if(checkNullSpace){
-            factors.push_back(factor);
-        }
     }
-    ceres::ResidualBlockId rid;
     for (int i = 0; i <vioRollPitchEdges.size() ; ++i) {
         auto factor=vioRollPitchEdges[i];
         int index=factor->index;
-        rid=problem.AddResidualBlock(factor,NULL,para_Pose[index]);
-        if(checkNullSpace){
-            factors.push_back(factor);
-        }
-    }
-    if(relocalization_info)
-    {
-        //printf("set relocalization factor! \n");
-        ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
-        problem.AddParameterBlock(relo_Pose, SIZE_POSE, local_parameterization);
-        int retrive_feature_index = 0;
-        int feature_index = -1;
-        for (auto &idFeatures : f_manager.IDsfeatures)
-        {
-            idFeatures.used_num = idFeatures.idfeatures.size();
-            if (!f_manager.goodFeature(idFeatures))
-                continue;
-            ++feature_index;
-            int start = idFeatures.start_frame;
-            if(start <= relo_frame_local_index)
-            {
-                while((int)match_points[retrive_feature_index].z() < idFeatures.feature_id)
-                {
-                    retrive_feature_index++;
-                }
-                if((int)match_points[retrive_feature_index].z() == idFeatures.feature_id)
-                {
-                    Vector3d pts_j = Vector3d(match_points[retrive_feature_index].x(), match_points[retrive_feature_index].y(), 1.0);
-                    Vector3d pts_i = idFeatures.idfeatures[0].point;
-
-                    ProjectionFactor *f = new ProjectionFactor(pts_i, pts_j);
-                    problem.AddResidualBlock(f, loss_function, para_Pose[start], relo_Pose, para_Ex_Pose[0], para_Feature[feature_index]);
-                    retrive_feature_index++;
-                }
-            }
-        }
-
+        problem.AddResidualBlock(factor,loss_function,para_Pose[index]);
     }
 
     ceres::Solver::Options options;
@@ -1208,26 +1126,23 @@ void Estimator::problemSolve()
     TicToc t_solver;
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-    //check nullspace
-
-//    std::unordered_map<double *,pair<int,int>> OrderMap;
-//    int idx=0;
-//    for (int i = 0; i<ALL_BUF_SIZE ; i++) {
-//        OrderMap[para_Pose[i]]=make_pair(idx,6);
-//        idx+=6;
-//        OrderMap[para_SpeedBias[i]]=make_pair(idx,9);
-//        idx+=9;
-//    }
-//    for (int i = 0; i <feature_index ; ++i) {
-//        OrderMap[para_Feature[i]]=make_pair(idx,1);
-//        idx+=1;
-//    }
-//    int full_size=ALL_BUF_SIZE*15+feature_index;
-//    MatrixXd H;
-//    H.resize(full_size,full_size);
+    cout<<summary.BriefReport()<<endl;
 
 
-    //cout<<summary.BriefReport()<<endl;
+    //update pseudo-measurement
+    vioVBPrior->update(Vs[Vo_SIZE - 1],Bas[Vo_SIZE - 1],Bgs[Vo_SIZE - 1],para_SpeedBias[Vo_SIZE - 1]);
+    vioPosePriorEdge->update(Ps[0],Rs[0],para_Pose[0]);
+    for (int i = 0; i < vioRelativePoseEdges.size() - 1 ; ++i) {
+        int j=i+1;
+        auto factor=vioRelativePoseEdges[j];
+        factor->update(Ps[i],Rs[i],Ps[j],Rs[j],para_Pose[i],para_Pose[j]);
+    }
+    for (int i = 0; i <vioRollPitchEdges.size() ; ++i) {
+        auto factor=vioRollPitchEdges[i];
+        int index=factor->index;
+        factor->update(Rs[index],para_Pose[index]);
+    }
+
 }
 
 
@@ -1322,7 +1237,6 @@ void Estimator::MargForward() {
         }
     }
 
-   // cout<<"Lamda"<<endl<<Lamda<<endl;
     Eigen::MatrixXd Lamda_rr=Lamda.block(0, 0, 6, 6);
     Eigen::MatrixXd Lamda_mm=Lamda.block(6, 6, landamrk_size + 6, landamrk_size + 6);
 
@@ -1368,29 +1282,10 @@ void Estimator::MargForward() {
     pose_graph_factors_buf.push(cmbfactors);
     m_pose_graph_buf.unlock();
 
-    double eps=1e-8;
-//    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> Solver(rpOmega);
-//    cout<<"test rp omega "<<endl;
-//    cerr<<Solver.eigenvalues().transpose()<<endl;
 
-    pgRaltivePoseFactor->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(rpOmega).matrixL().transpose();
-    pgRaltivePoseFactor->setGlobalIndex(0);
-
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> initSolver(Lamda_mm);
-    Eigen::MatrixXd Lamda_mm_inv = initSolver.eigenvectors() *
-            Eigen::VectorXd((initSolver.eigenvalues().array() > eps).select(initSolver.eigenvalues().array().inverse(), 0)).asDiagonal() *
-                                   initSolver.eigenvectors().transpose();
+    Eigen::MatrixXd Lamda_mm_inv = Lamda_mm.fullPivLu().solve(Eigen::MatrixXd::Identity(landamrk_size + 6, landamrk_size + 6));
     Eigen::MatrixXd Lamda_rm=Lamda.block(0, 6, 6, landamrk_size + 6);
     auto Lamda_prior= Lamda_rr - Lamda_rm * Lamda_mm_inv * Lamda_rm.transpose();
-
-//    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> qr(Lamda_prior);
-//    qr.setThreshold(eps);
-//    cout << "Forward Information  has rank " << qr.rank() << " with rows and cols " << Lamda_prior.rows() << endl;
-
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> covSolver(Lamda_prior);
-    Eigen::MatrixXd cov = covSolver.eigenvectors() *
-                            Eigen::VectorXd((covSolver.eigenvalues().array() > eps).select(covSolver.eigenvalues().array().inverse(), 0)).asDiagonal() *
-            covSolver.eigenvectors().transpose();
 
     //keep pose for the first pose
     Vector3d P1;
@@ -1401,15 +1296,58 @@ void Estimator::MargForward() {
     MatrixXd infoMatrix=se3PriorFactor->sqrt_info.transpose()*se3PriorFactor->sqrt_info;
     Matrix<double,6,6> Jr=se3PriorFactor->jacobians[0];
 
-    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> Jqr(Jr);
-    if(Jqr.rank()<Jr.rows()){
-        cerr<<"Jacobian of forward recovered factor is rank-deficient"<<endl;
+//    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> Jqr(Jr);
+//    if(Jqr.rank()<Jr.rows()){
+//        cerr<<"Jacobian of forward recovered factor is rank-deficient"<<endl;
+//    }
+
+    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> qr(Lamda_prior);
+    qr.setThreshold(eps);
+    MatrixXd covi;
+    if(qr.rank()==Lamda_prior.cols()){
+        Eigen::MatrixXd cov=qr.solve(Eigen::MatrixXd::Identity(6,6));
+        covi=Jr*cov*Jr.transpose();
+    }else{
+        Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> covSolver(Lamda_prior);
+        vector<int> vset;
+        for (int i = 0; i <covSolver.eigenvalues().real().size() ; ++i) {
+            if(covSolver.eigenvalues().real()(i)>ALPHA){
+                vset.push_back(i);
+            }
+        }
+        int rank=vset.size();
+        MatrixXd U;
+        MatrixXd D;
+        D.resize(rank,rank);
+        U.resize(6,rank);
+        U.setZero();
+        D.setZero();
+        for (int i = 0; i <vset.size() ; ++i) {
+            U.col(i)=covSolver.eigenvectors().real().col(vset[i]);
+            D.block<1,1>(i,i)=covSolver.eigenvalues().real().row(vset[i]);
+        }
+        MatrixXd Dinv=D.inverse();
+        covi=Jr*U*Dinv*(Jr*U).transpose();
     }
 
-    MatrixXd info=Jr*cov*Jr.transpose();
-    se3PriorFactor->sqrt_info=extractInfo(info);
+    Eigen::MatrixXd X;
+    X.resize(6,6);
+    X=covi.inverse();
+    if(qr.rank()==Lamda_prior.cols()){
+        auto phi=Jr.transpose()*X*Jr;
+        Eigen::MatrixXd cov=qr.solve(Eigen::MatrixXd::Identity(6,6));
 
-   // cout<<"recovered forward pose info "<<endl<<Omega<<endl;
+        double a=(phi*cov).trace();
+        double b=log(phi.determinant());
+        double c=log(cov.determinant());
+        double kld=0.5*(a-b-c-6);
+        //cout<<"forward KLD is "<<kld<<endl;
+    }
+
+
+    //cout<<"se3PriorFactor "<<endl;
+    se3PriorFactor->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(covi.inverse()).matrixL().transpose();
+
     forwardPosePriorEdgeToAdd=se3PriorFactor;
 }
 
@@ -1442,13 +1380,14 @@ void Estimator::MargBackward(){
     }
 
     {
-        backwardIMUtoSparsify->Evaluate(para_Pose[Vo_SIZE - 1], para_SpeedBias[Vo_SIZE - 1],
-                                        para_Pose[Vo_SIZE], para_SpeedBias[Vo_SIZE]);
-        vector<MatrixXd> jacobians=backwardIMUtoSparsify->jacobians;
-        MatrixXd infoMatrix=backwardIMUtoSparsify->sqrt_info.transpose()*backwardIMUtoSparsify->sqrt_info;
-        int imu_i=backwardIMUtoSparsify->imu_i;
-        int imu_j=backwardIMUtoSparsify->imu_j;
+        auto imufactor=backwardIMUtoSparsify;
+        int imu_i=imufactor->imu_i;
+        int imu_j=imufactor->imu_j;
         assert(imu_i == Vo_SIZE - 1 && imu_j == Vo_SIZE);
+        imufactor->Evaluate(para_Pose[Vo_SIZE - 1], para_SpeedBias[Vo_SIZE - 1],
+                            para_Pose[Vo_SIZE], para_SpeedBias[Vo_SIZE]);
+        vector<MatrixXd> jacobiansI=imufactor->jacobians;
+        MatrixXd omegaI=imufactor->sqrt_info.transpose()*imufactor->sqrt_info;
         vector<double *> ParamMap;
         ParamMap.push_back(para_Pose[imu_i]);
         ParamMap.push_back(para_SpeedBias[imu_i]);
@@ -1456,17 +1395,17 @@ void Estimator::MargBackward(){
         ParamMap.push_back(para_SpeedBias[imu_j]);
         for (int j = 0; j <ParamMap.size() ; ++j) {
             auto v_j=OrderMap[ParamMap[j]];
-            int idxj=v_j.first;
-            int dimj=v_j.second;
-            MatrixXd JtW = jacobians[j].transpose() * infoMatrix;
+            int index_j=v_j.first;
+            int dim_j=v_j.second;
+            MatrixXd JtW = jacobiansI[j].transpose() * omegaI;
             for (int k = j; k <ParamMap.size() ; ++k) {
                 auto v_k=OrderMap[ParamMap[k]];
-                int idxk=v_k.first;
-                int dimk=v_k.second;
-                Eigen::MatrixXd Hessian=JtW*jacobians[k];
-                Lamda.block(idxj, idxk, dimj, dimk).noalias()+=Hessian;
-                if(j!=k){
-                    Lamda.block(idxk, idxj, dimk, dimj).noalias()+=Hessian.transpose();
+                int index_k=v_k.first;
+                int dim_k=v_k.second;
+                MatrixXd hessian = JtW * jacobiansI[k];
+                Lamda.block(index_j, index_k, dim_j, dim_k).noalias() += hessian;
+                if (j != k) {
+                    Lamda.block(index_k, index_j, dim_k, dim_j).noalias() += hessian.transpose();
                 }
             }
         }
@@ -1475,22 +1414,10 @@ void Estimator::MargBackward(){
     Eigen::MatrixXd Lamda_mm=Lamda.block(21, 21, 9, 9);
     Eigen::MatrixXd Lamda_rm=Lamda.block(0, 21, 21, 9);
 
-    double eps=1e-8;
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> initSolver(Lamda_mm);
-    Eigen::MatrixXd Lamda_mm_inv = initSolver.eigenvectors() * Eigen::VectorXd(
-            (initSolver.eigenvalues().array() > eps).select(initSolver.eigenvalues().array().inverse(), 0)).asDiagonal() *
-                                   initSolver.eigenvectors().transpose();
+    Eigen::MatrixXd Lamda_mm_inv = Lamda_mm.fullPivLu().solve(Eigen::MatrixXd::Identity(9, 9));
 
-    auto Lamda_prior= Lamda_rr - Lamda_rm * Lamda_mm_inv * Lamda_rm.transpose();
+    MatrixXd Lamda_prior= Lamda_rr - Lamda_rm * Lamda_mm_inv * Lamda_rm.transpose();
 
-
-    //cout<<Lamda_prior<<endl;
-    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> covSolver(Lamda_prior);
-    Eigen::VectorXd S = Eigen::VectorXd((covSolver.eigenvalues().array() > eps).select(covSolver.eigenvalues().array(), 0));
-    Eigen::VectorXd S_inv = Eigen::VectorXd(
-            (covSolver.eigenvalues().array() > eps).select(covSolver.eigenvalues().array().inverse(), 0));
-    MatrixXd U=covSolver.eigenvectors();
-    MatrixXd cov=S_inv.asDiagonal();
 
     //recovery information
 //    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> qr(Lamda_prior);
@@ -1537,26 +1464,74 @@ void Estimator::MargBackward(){
     Jr.block(20,15,1,6).noalias()+=yawFactor->jacobians[0];
 
 
-    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> Jqr(Jr);
-    if(Jqr.rank()<Jr.rows()){
-        cerr<<"Jacobian of backward recovered factor is rank-deficient"<<endl;
-    }
+
+//    Eigen::FullPivHouseholderQR<Eigen::MatrixXd> Jqr(Jr);
+//    if(Jqr.rank()<Jr.rows()){
+//        cerr<<"Jacobian of backward recovered factor is rank-deficient"<<endl;
+//    }
 
     MatrixXd Jrp=Jr.block(0,0,6,21);
     MatrixXd Jvb=Jr.block(6,0,9,21);
     MatrixXd Jgv=Jr.block(15,0,2,21);
+    MatrixXd Jabs=Jr.block(17,0,3,21);
+    MatrixXd Jyaw=Jr.block(20,0,1,21);
 
-    MatrixXd RPinfo=Jrp*U*cov*(Jrp*U).transpose();
-    relativePoseFactor->sqrt_info=extractInfo(RPinfo);
+    Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> covSolver(Lamda_prior);
+    vector<int> vset;
+    for (int i = 0; i <covSolver.eigenvalues().real().size() ; ++i) {
+        if(covSolver.eigenvalues().real()(i)>ALPHA){
+            vset.push_back(i);
+        }
+    }
+    int rank=vset.size();
+    MatrixXd U;
+    MatrixXd D;
+    D.resize(rank,rank);
+    U.resize(21,rank);
+    U.setZero();
+    D.setZero();
+    for (int i = 0; i <vset.size() ; ++i) {
+        U.col(i)=covSolver.eigenvectors().real().col(vset[i]);
+        D.block<1,1>(i,i)=covSolver.eigenvalues().real().row(vset[i]);
+    }
+    auto Dinv=D.inverse();
 
-    MatrixXd VBinfo=Jvb*U*cov*(Jvb*U).transpose();
-    speedBiasPrior->sqrt_info=extractInfo(VBinfo);
+    vector<pair<Eigen::MatrixXd,int>> infoVec;
+    MatrixXd RPinfo=Jrp*U*Dinv*(Jrp*U).transpose();
+    infoVec.emplace_back(RPinfo.inverse(),0);
+    //cout<<"relativePoseFactor "<<endl<<RPinfo.inverse()<<endl;
+    relativePoseFactor->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(RPinfo.inverse()).matrixL().transpose();
 
-    MatrixXd GVinfo=Jgv*U*cov*(Jgv*U).transpose(); //roll and pitch factor,aligned with gravity
-    rollPitchFactor->sqrt_info=extractInfo(GVinfo);
+    MatrixXd VBinfo=Jvb*U*Dinv*(Jvb*U).transpose();
+    infoVec.emplace_back(VBinfo.inverse(),6);
+    //cout<<"speedBiasPrior "<<endl<<VBinfo.inverse()<<endl;
+    speedBiasPrior->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(VBinfo.inverse()).matrixL().transpose();
+
+    MatrixXd GVinfo=Jgv*U*Dinv*(Jgv*U).transpose(); //roll and pitch factor,aligned with gravity
+
+    //test
+    //cout<<"rollPitchFactor "<<endl<<GVinfo.inverse()<<endl;
+    infoVec.emplace_back(GVinfo.inverse(),15);
+    rollPitchFactor->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(GVinfo.inverse()).matrixL().transpose();
     rollPitchFactor->setIndex(Vo_SIZE - 1);
 
+    infoVec.emplace_back((Jabs*U*Dinv*(Jabs*U).transpose()).inverse(),17);
+    infoVec.emplace_back((Jyaw*U*Dinv*(Jyaw*U).transpose()).inverse(),20);
+
     //TODO TEST edgeRollPitch information with before one
+    Eigen::MatrixXd X;
+    X.resize(21,21);
+    X.setZero();
+    for (int i = 0; i <infoVec.size() ; ++i) {
+        X.block(infoVec[i].second,infoVec[i].second,infoVec[i].first.rows(),infoVec[i].first.rows())+=infoVec[i].first;
+    }
+    MatrixXd A=(Jr*U).transpose()*X*Jr*U;
+    //cout<<"zero test"<<endl<<A-D<<endl;
+    double a=(A*Dinv).trace();
+    double b=log(A.determinant());
+    double c=log(Dinv.determinant());
+    double kld=0.5*(a-b-c-21);
+    cout<<"backward KLD is "<<kld<<endl;
 
     vioRollPitchEdges.push_back(rollPitchFactor);
     backwardVBEdgeToAdd=speedBiasPrior;
@@ -1746,23 +1721,4 @@ void Estimator::slideWindowOld()
     }
     else
         f_manager.removeBack();
-}
-void Estimator::setReloFrame(double _frame_stamp, int _frame_index, vector<Vector3d> &_match_points, Vector3d _relo_t, Matrix3d _relo_r)
-{
-    relo_frame_stamp = _frame_stamp;
-    relo_frame_index = _frame_index;
-    match_points.clear();
-    match_points = _match_points;
-    prev_relo_t = _relo_t;
-    prev_relo_r = _relo_r;
-    for(int i = 0; i < ALL_BUF_SIZE; i++)
-    {
-        if(relo_frame_stamp == Headers[i])
-        {
-            relo_frame_local_index = i;
-            relocalization_info = 1;
-            for (int j = 0; j < SIZE_POSE; j++)
-                relo_Pose[j] = para_Pose[i][j];
-        }
-    }
 }

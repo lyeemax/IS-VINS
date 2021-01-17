@@ -50,7 +50,6 @@ class ProjectionFactor : public ceres::SizedCostFunction<2, 7, 7, 7, 1>
     int imu_i,imu_j,feature_idx;
     std::vector<Eigen::MatrixXd> jacobians;
     bool outlier;
-    bool linearized;
     VectorXd residual;
 
 };

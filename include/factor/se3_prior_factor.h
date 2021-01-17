@@ -11,7 +11,6 @@ public:
     SE3PriorFactor() = delete;
 
     SE3PriorFactor(const Vector3d t_new, const Quaterniond R_new) : R(R_new), t(t_new) {
-        linearized=false;
         jacobians.resize(1);
         residual.resize(6,1);
     }
@@ -32,34 +31,24 @@ public:
         residual.block<3,1>(3,0) = res_r.log();
         residual.block<3,1>(0,0) = Pi - t;
         residual=sqrt_info*residual;
-//        double error=residual.transpose()*residual;
-//        if(error>1){
-//            cerr<<"residual of absolute pose of "<<index<<" +++: "<<error<<endl;
-//        }
+        //cerr<<"debug se3PriorFactor residual:  "<<residual.transpose()*residual<<endl;
 
         if (jacobians){
             if (jacobians[0]) {
-                if(linearized){
-                    Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
-                    jacobian_pose_i.setZero();
-                    jacobian_pose_i.topLeftCorner<6,6>()=this->jacobians[0];
-                    jacobian_pose_i=sqrt_info*jacobian_pose_i;
-                }else{
-                    Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
-                    jacobian_pose_i.setZero();
-                    jacobian_pose_i.block<3,3>(0,0) = Matrix3d::Identity();
-                    Matrix3d J;
-                    Sophus::rightJacobianInvSO3(res_r.log(),J);
-                    jacobian_pose_i.block<3,3>(3,3) =J;
+                Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
+                jacobian_pose_i.setZero();
+                jacobian_pose_i.block<3,3>(0,0) = Matrix3d::Identity();
+                Matrix3d J;
+                Sophus::rightJacobianInvSO3(res_r.log(),J);
+                jacobian_pose_i.block<3,3>(3,3) =J;
 
-                    jacobian_pose_i=sqrt_info*jacobian_pose_i;
-                }
+                jacobian_pose_i=sqrt_info*jacobian_pose_i;
 
             }
 
         }
 
-       //check(parameters,jacobians);
+        //check(parameters,jacobians);
         return true;
     }
 
@@ -79,9 +68,16 @@ public:
         Sophus::rightJacobianInvSO3(res_r.log(),J);
         jacobian_pose_i.block<3,3>(3,3) = J;
         jacobians[0]=jacobian_pose_i;
-        if(!Nscheck){
-            linearized=0;
-        }
+    }
+
+    void update(Eigen::Vector3d Pi,Eigen::Matrix3d Ri,double const *PSi){
+        Eigen::Matrix<double,3,1> T0=Pi,T1(PSi[0],PSi[1],PSi[2]);
+        Eigen::Quaterniond Qi(PSi[6], PSi[3], PSi[4], PSi[5]);
+        Sophus::SO3d R0(Ri),R1(Qi);
+        Vector3d delta_t=T1-T0;
+        Vector3d delta_R=(R1.inverse()*R0).log();
+        t+=delta_t;
+        R=R*Sophus::SO3d::exp(delta_R).matrix();
     }
 
     MatrixXd Former(Matrix<double,6,1> parameters,Matrix<double,6,1> delta) const {
@@ -100,7 +96,7 @@ public:
         Sophus::SO3d res_r = rp.inverse() * ri;
         residual.block<3,1>(3,0) = res_r.log();
         residual.block<3,1>(0,0) = Pi - t;
-        //residual=sqrt_info*residual;
+        residual=sqrt_info*residual;
         return residual;
 
     }
@@ -129,9 +125,6 @@ public:
         Matrix<double,6,6> Ja;
         Ja=jacobian_pose_i.topLeftCorner<6,6>();
 
-
-        auto zero=Ja-J;
-
         cout<<"zero test in SE3PriorFactor"<<endl;
         cout<<J<<endl;
         cout<<"------------"<<endl;
@@ -144,7 +137,6 @@ public:
     MatrixXd sqrt_info;
     int index;
     vector<MatrixXd> jacobians;
-    bool linearized;
     VectorXd residual;
 };
 #endif //CS_VINS_SE3_PRIOR_FACTOR_H

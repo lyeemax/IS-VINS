@@ -48,13 +48,12 @@ public:
     }
     ~PoseGraphBuilder(){
         ofs_pose.close();
-        pangolin::QuitAll();
+//        pangolin::QuitAll();
     }
     void new_sequence();
     void GrabImg(cvImgStampedPtr &imgstamped);
     void GrabKeyframePoints(Keyframe_pointsPtr &kps);
     void GrabKeyFrameFactor(CombinedFactors *factor);
-    void GrabRelocRelativePose(int index,Eigen::Matrix<double, 8, 1 > &loop_info);
     void process();
     void Draw();
     std::mutex m_reloc_buf;

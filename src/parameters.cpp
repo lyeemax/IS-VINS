@@ -11,7 +11,8 @@ double INIT_DEPTH;
 double MIN_PARALLAX;
 double ACC_N, ACC_W;
 double GYR_N, GYR_W;
-
+double ALPHA;
+double PIXEL_SQRT_INFO;
 vector<Eigen::Matrix3d> RIC;
 vector<Eigen::Vector3d> TIC;
 
@@ -98,6 +99,7 @@ void readParameters(string config_file)
     // ROS_INFO("ROW: %f COL: %f ", ROW, COL);
 
     ESTIMATE_EXTRINSIC = fsSettings["estimate_extrinsic"];
+    PIXEL_SQRT_INFO=fsSettings["pixel_sqrt_info"];
     if (ESTIMATE_EXTRINSIC == 2)
     {
         // ROS_WARN("have no prior about extrinsic param, calibrate extrinsic param");
@@ -138,6 +140,7 @@ void readParameters(string config_file)
 
     TD = fsSettings["td"];
     ESTIMATE_TD = fsSettings["estimate_td"];
+    ALPHA=fsSettings["alpha"];
     // if (ESTIMATE_TD)
         // ROS_INFO_STREAM("Unsynchronized sensors, online estimate time offset, initial td: " << TD);
     // else

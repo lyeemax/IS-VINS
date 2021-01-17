@@ -423,7 +423,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	    printf("PNP relative\n");
 	    cout << "pnp relative_t " << relative_t.transpose() << endl;
 	    cout << "pnp relative_yaw " << relative_yaw << endl;
-	    if (abs(relative_yaw) < 30.0 && relative_t.norm() < 20.0)
+	    if (abs(relative_yaw) < 60.0 && relative_t.norm() < 20.0)
 	    {
 
 	    	has_loop = true;
@@ -431,20 +431,6 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	    	loop_info << relative_t.x(), relative_t.y(), relative_t.z(),
 	    	             relative_q.w(), relative_q.x(), relative_q.y(), relative_q.z(),
 	    	             relative_yaw;
-	    	if(FAST_RELOCALIZATION)
-	    	{
-                relc_info=make_shared<relocation_infos>();
-                relc_info->R_old=old_kf->R_w_i;
-                relc_info->t_old=old_kf->T_w_i;
-                relc_info->header=time_stamp;
-                relc_info->index=loop_index;
-                for (int i = 0; i < (int)matched_2d_old_norm.size(); i++)
-			    {
-		            relc_info->uv_old_norm.emplace_back(matched_2d_old_norm[i].x,matched_2d_old_norm[i].y);
-                    relc_info->matched_id.emplace_back( matched_id[i]);
-			    }
-
-	    	}
 	        return true;
 	    }
 	}
@@ -494,20 +480,6 @@ Eigen::Vector3d KeyFrame::getLoopRelativeT()
 Eigen::Quaterniond KeyFrame::getLoopRelativeQ()
 {
     return Eigen::Quaterniond(loop_info(3), loop_info(4), loop_info(5), loop_info(6));
-}
-
-double KeyFrame::getLoopRelativeYaw()
-{
-    return loop_info(7);
-}
-
-void KeyFrame::updateLoop(Eigen::Matrix<double, 8, 1 > &_loop_info)
-{
-	if (abs(_loop_info(7)) < 30.0 && Vector3d(_loop_info(0), _loop_info(1), _loop_info(2)).norm() < 20.0)
-	{
-		//printf("update loop info\n");
-		loop_info = _loop_info;
-	}
 }
 
 BriefExtractor::BriefExtractor(const std::string &pattern_file)

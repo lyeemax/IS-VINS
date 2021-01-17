@@ -11,8 +11,9 @@
 // extern int ROW;
 // extern int COL;
 const int NUM_OF_CAM = 1;
-
+extern double ALPHA;
 extern int FOCAL_LENGTH;
+extern double PIXEL_SQRT_INFO;
 extern std::string IMAGE_TOPIC;
 extern std::string IMU_TOPIC;
 extern std::string FISHEYE_MASK;
@@ -32,12 +33,12 @@ extern bool PUB_THIS_FRAME;
 
 // const double FOCAL_LENGTH = 460.0;
 //Vo_SIZE must larger than(or equal to) 2
-const int Vo_SIZE=2;
+const int Vo_SIZE=8;
 // const int NUM_OF_CAM = 1;
 const int NUM_OF_F = 1000;
 //#define UNIT_SPHERE_ERROR
 
-const int ALL_BUF_SIZE=15;
+const int ALL_BUF_SIZE=18;
 
 extern double INIT_DEPTH;
 extern double MIN_PARALLAX;
@@ -93,12 +94,4 @@ enum StateOrder
     O_V = 6,
     O_BA = 9,
     O_BG = 12
-};
-
-enum NoiseOrder
-{
-    O_AN = 0,
-    O_GN = 3,
-    O_AW = 6,
-    O_GW = 9
 };

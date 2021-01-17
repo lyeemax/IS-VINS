@@ -62,9 +62,6 @@ public:
         J.bottomRightCorner<3,3>()=-Ri.matrix()*Utility::skewSymmetric(yaw_meas);
         jacobian_pose_i.topLeftCorner<1,6>() =J.block(1,0,1,6);
         jacobians[0]=jacobian_pose_i;
-        if(!Nscheck){
-            linearized=0;
-        }
     }
 
     Vector3d yaw_meas;
@@ -72,6 +69,5 @@ public:
     int index;
     vector<MatrixXd> jacobians;
     VectorXd residual;
-    bool linearized;
 };
 #endif //CS_VINS_YAW_FACTOR_H

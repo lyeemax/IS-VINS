@@ -21,11 +21,20 @@
 #include "factor/linear9_factor.h"
 #include "factor/imu_factor.h"
 #include <msg/msgtype.h>
-#include "factor//rollpitch_factor.h"
+#include "factor/rollpitch_factor.h"
 #include "factor/yaw_factor.h"
 #include "factor/pose_graph_factors.h"
 
 static long PoseGraphFactorCount=0;
+
+//struct CombineIMUFactors{
+//    CombineIMUFactors(IMUFactor* _imuFactor,IMUBiasFactor *_biasFactor){
+//        imuFactor=_imuFactor;
+//        biasFactor=_biasFactor;
+//    }
+//    IMUFactor *imuFactor;
+//    IMUBiasFactor *biasFactor;
+//};
 class Estimator
 {
   public:
@@ -38,7 +47,6 @@ class Estimator
     
     void processImage(const map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> &image, double header);
 
-    void setReloFrame(double _frame_stamp, int _frame_index, vector<Vector3d> &_match_points, Vector3d _relo_t, Matrix3d _relo_r);
     // internal
     void clearState();
     bool initialStructure();
@@ -119,22 +127,6 @@ class Estimator
     map<double, ImageFrame> all_image_frame;
     IntegrationBase *tmp_pre_integration;
 
-    //relocalization variable
-    bool relocalization_info;
-    double relo_frame_stamp;
-    double relo_frame_index;
-    int relo_frame_local_index;
-    vector<Vector3d> match_points;
-    double relo_Pose[SIZE_POSE];
-    Matrix3d drift_correct_r;
-    Vector3d drift_correct_t;
-    Vector3d prev_relo_t;
-    Matrix3d prev_relo_r;
-    Vector3d relo_relative_t;
-    Quaterniond relo_relative_q;
-    double relo_relative_yaw;
-    std::mutex m_loop_buf;
-    std::queue<pair<int,Eigen::Matrix<double,8,1>>> loop_buf;
     std::mutex m_pose_graph_buf;
     std::queue<CombinedFactors*> pose_graph_factors_buf;
 

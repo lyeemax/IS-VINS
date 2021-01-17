@@ -42,7 +42,7 @@ void PoseGraph::addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop)
     
     cur_kf->getVioPose(vio_P_cur, vio_R_cur);
     vio_P_cur = w_r_vio * vio_P_cur + w_t_vio;
-    vio_R_cur = w_r_vio *  vio_R_cur;
+    vio_R_cur = w_r_vio *  vio_R_cur;//Rww'*Rw'i
     cur_kf->updateVioPose(vio_P_cur, vio_R_cur);
 //    cur_kf->index = global_index;//TODO changed
 //    global_index++;
@@ -73,19 +73,16 @@ void PoseGraph::addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop)
 
             Vector3d relative_t;
             Quaterniond relative_q;
-            relative_t = cur_kf->getLoopRelativeT();
-            relative_q = (cur_kf->getLoopRelativeQ()).toRotationMatrix();
+            relative_t = cur_kf->getLoopRelativeT();//tlc
+            relative_q = (cur_kf->getLoopRelativeQ()).toRotationMatrix();//Rlc
             w_P_cur = w_R_old * relative_t + w_P_old;
             w_R_cur = w_R_old * relative_q;
-            double shift_yaw;
             Matrix3d shift_r;
             Vector3d shift_t;
-            shift_yaw = Utility::R2ypr(w_R_cur).x() - Utility::R2ypr(vio_R_cur).x();
-           // shift_r = Utility::ypr2R(Vector3d(shift_yaw, 0, 0));
             shift_r=w_R_cur*vio_R_cur.transpose();
             shift_t = w_P_cur - w_R_cur * vio_R_cur.transpose() * vio_P_cur;
             // shift vio pose of whole sequence to the world frame
-            if (old_kf->sequence != cur_kf->sequence && sequence_loop[cur_kf->sequence] == 0)// && sequence_loop[cur_kf->sequence] == 0)
+            if (old_kf->sequence != cur_kf->sequence && sequence_loop[cur_kf->sequence] == 0)
             {
                 w_r_vio = shift_r;
                 w_t_vio = shift_t;
@@ -261,6 +258,8 @@ void PoseGraph::optimizeCS() {
             // w^t_i   w^q_i
             double pose_array[max_length][7];
 
+            ceres::Covariance::Options coptions;
+            ceres::Covariance covariance(coptions);
             ceres::Problem::Options problemOptions;
             problemOptions.cost_function_ownership=ceres::Ownership::DO_NOT_TAKE_OWNERSHIP;
             ceres::Problem problem(problemOptions);
@@ -276,6 +275,7 @@ void PoseGraph::optimizeCS() {
             list<KeyFrame*>::iterator it;
 
             int param_index = 0;
+            vector<pair<const double*, const double*> > covariance_blocks;
             for (it = keyframelist.begin(); it != keyframelist.end(); it++)
             {
                 if ((*it)->index < first_looped_index)
@@ -297,6 +297,7 @@ void PoseGraph::optimizeCS() {
                 pose_array[param_index][6] =tmp_q.w();
                 ceres::LocalParameterization *local_parameterization = new PoseLocalParameterization();
                 problem.AddParameterBlock(pose_array[param_index], 7, local_parameterization);
+                //covariance_blocks.push_back(make_pair(pose_array[param_index], pose_array[param_index]));
                 if ( (*it)->index== first_looped_index ||(*it)->sequence == 0)
                 {
                     problem.SetParameterBlockConstant(pose_array[param_index]);
@@ -332,7 +333,7 @@ void PoseGraph::optimizeCS() {
                     assert((*it)->loop_index >= first_looped_index);
                     int connected_index = getKeyFrame((*it)->loop_index)->local_index;
                     RelativePoseFactor* relocfactor=new RelativePoseFactor((*it)->getLoopRelativeT(),(*it)->getLoopRelativeQ().toRotationMatrix());
-                    relocfactor->sqrt_info=1e8*Eigen::Matrix<double,6,6>::Identity();
+                    relocfactor->sqrt_info=1e6*Eigen::Matrix<double,6,6>::Identity();
                     problem.AddResidualBlock(relocfactor, loss_function, pose_array[connected_index], pose_array[li]);
                 }
 
@@ -341,7 +342,11 @@ void PoseGraph::optimizeCS() {
             m_keyframelist.unlock();
 
             ceres::Solve(options, &problem, &summary);
-            std::cout << summary.BriefReport() << "\n";
+            //std::cout << summary.BriefReport() << "\n";
+//            CHECK(covariance.Compute(covariance_blocks, &problem));
+//            double covariance_pose[6 * 6];
+//            covariance.GetCovarianceBlock(pose_array[cur_index-1], pose_array[cur_index-1], covariance_pose);
+//            std::cerr<<Eigen::Map<Eigen::Matrix<double,6,6>>(covariance_pose)<<std::endl;
 
             //printf("pose optimization time: %f \n", tmp_t.toc());
             /*
@@ -352,6 +357,7 @@ void PoseGraph::optimizeCS() {
             */
             m_keyframelist.lock();
             param_index = 0;
+            KeyFrame* last= nullptr;
             for (it = keyframelist.begin(); it != keyframelist.end(); it++)
             {
                 if ((*it)->index < first_looped_index)
@@ -362,6 +368,12 @@ void PoseGraph::optimizeCS() {
                 Vector3d tmp_t = Vector3d(pose_array[param_index][0], pose_array[param_index][1], pose_array[param_index][2]);
                 Matrix3d tmp_r = tmp_q.toRotationMatrix();
                 (*it)-> updatePose(tmp_t, tmp_r);
+                if(last){
+                    last->keyfactor->relativePoseFactor->update(last->T_w_i,last->R_w_i,(*it)->T_w_i,(*it)->R_w_i,
+                                                                 pose_array[param_index-1],pose_array[param_index]);
+                }
+
+                last=*it;
                 if ((*it)->index == cur_index)
                     break;
                 param_index++;
@@ -395,41 +407,5 @@ void PoseGraph::optimizeCS() {
 
         std::chrono::milliseconds dura(2000);
         std::this_thread::sleep_for(dura);
-    }
-}
-
-void PoseGraph::updateKeyFrameLoop(int index, Eigen::Matrix<double, 8, 1 > &_loop_info)
-{
-    KeyFrame* kf = getKeyFrame(index);
-    kf->updateLoop(_loop_info);
-    if (abs(_loop_info(7)) < 30.0 && Vector3d(_loop_info(0), _loop_info(1), _loop_info(2)).norm() < 20.0)
-    {
-        if (FAST_RELOCALIZATION)
-        {
-            KeyFrame* old_kf = getKeyFrame(kf->loop_index);
-            Vector3d w_P_old, w_P_cur, vio_P_cur;
-            Matrix3d w_R_old, w_R_cur, vio_R_cur;
-            old_kf->getPose(w_P_old, w_R_old);
-            kf->getVioPose(vio_P_cur, vio_R_cur);
-
-            Vector3d relative_t;
-            Quaterniond relative_q;
-            relative_t = kf->getLoopRelativeT();
-            relative_q = (kf->getLoopRelativeQ()).toRotationMatrix();
-            w_P_cur = w_R_old * relative_t + w_P_old;
-            w_R_cur = w_R_old * relative_q;
-            double shift_yaw;
-            Matrix3d shift_r;
-            Vector3d shift_t; 
-            shift_yaw = Utility::R2ypr(w_R_cur).x() - Utility::R2ypr(vio_R_cur).x();
-            shift_r = Utility::ypr2R(Vector3d(shift_yaw, 0, 0));
-            shift_t = w_P_cur - w_R_cur * vio_R_cur.transpose() * vio_P_cur; 
-
-            m_drift.lock();
-            yaw_drift = shift_yaw;
-            r_drift = shift_r;
-            t_drift = shift_t;
-            m_drift.unlock();
-        }
     }
 }

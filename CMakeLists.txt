@@ -51,7 +51,7 @@ add_library(reloc SHARED
 		thirdparty/DUtils/Random.cpp
 		thirdparty/DUtils/Timestamp.cpp
 		thirdparty/DVision/BRIEF.cpp
-		thirdparty/VocabularyBinary.cpp include/msg/msgtype.h)
+		thirdparty/VocabularyBinary.cpp)
 
 add_library(ceres_factor SHARED
 		include/factor/imu_factor.h
@@ -64,7 +64,10 @@ add_library(ceres_factor SHARED
 		include/factor/se3_prior_factor.h
 		include/factor/linear9_factor.h
 		include/factor/rollpitch_factor.h
-		include/factor/yaw_factor.h include/factor/pose_graph_factors.h)
+		include/factor/yaw_factor.h
+		include/factor/pose_graph_factors.h
+		#include/factor/imu_bias_factor.h
+		)
 
 target_link_libraries(camera_model ${Boost_LIBRARIES} ${OpenCV_LIBS} ${CERES_LIBRARIES})
 
@@ -87,7 +90,8 @@ ADD_LIBRARY(ISVins SHARED
 	src/pose_graph/pose_graph.cpp
 	src/pose_graph/pose_graph_builder.cpp
 	include/pose_graph/pose_graph_builder.h include/msg/msgtype.h
-		)
+		#include/utility/factor_descent.h
+		include/utility/eigen_file.h)
 
 target_link_libraries(ISVins
   ${OpenCV_LIBS}  
@@ -97,3 +101,6 @@ target_link_libraries(ISVins
 		ceres_factor
 		reloc)
 
+add_executable(run_euroc test/run_euroc.cpp )
+target_link_libraries(run_euroc
+  ISVins -lpthread)

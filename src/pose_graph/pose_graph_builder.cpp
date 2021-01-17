@@ -53,9 +53,6 @@ void PoseGraphBuilder::GrabKeyFrameFactor(CombinedFactors *factor){
     pgfactor_buf.push(factor);
     m_buf.unlock();
 }
-void PoseGraphBuilder::GrabRelocRelativePose(int index,Eigen::Matrix<double, 8, 1 > &loop_info){
-    posegraph.updateKeyFrameLoop(index, loop_info);
-}
 
 void PoseGraphBuilder::process()
 {
@@ -160,9 +157,9 @@ void PoseGraphBuilder::process()
                 *accumFactor=(*accumFactor)+(*currentFactor);
                 if(accumFactor->distance>SKIP_DIS){
                     //debug
-                    cout<<"test--------------------"<<endl;
-                    cout<<"PoseGraph index "<<accumFactor->pg_index<<endl;
-                    cout<<"GV info ::"<<endl<<accumFactor->rollPitchFactor->sqrt_info<<endl;
+//                    cout<<"test--------------------"<<endl;
+//                    cout<<"PoseGraph index "<<accumFactor->pg_index<<endl;
+//                    cout<<"GV info ::"<<endl<<accumFactor->rollPitchFactor->sqrt_info<<endl;
 
                     Eigen::Matrix3d R=accumFactor->R;
                     Eigen::Vector3d T=accumFactor->t;

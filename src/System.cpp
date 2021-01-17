@@ -142,6 +142,19 @@ void System::PubImageData(double dStampSec, Mat &img)
             }
         }
     }
+
+    cv::Mat show_img;
+    cv::cvtColor(img, show_img, CV_GRAY2RGB);
+    if (SHOW_TRACK) {
+        for (unsigned int j = 0; j < trackerData[0].cur_pts.size(); j++) {
+            double len = min(1.0, 1.0 * trackerData[0].track_cnt[j] / ALL_BUF_SIZE);
+            cv::circle(show_img, trackerData[0].cur_pts[j], 2, cv::Scalar(255 * (1 - len), 0, 255 * len), 2);
+        }
+
+        cv::namedWindow("IMAGE", CV_WINDOW_AUTOSIZE);
+        cv::imshow("IMAGE", show_img);
+        cv::waitKey(1);
+    }
 }
 
 vector<pair<vector<ImuConstPtr>, ImgConstPtr>> System::getMeasurements()
@@ -283,39 +296,39 @@ void System::ProcessBackEnd()
                 }
             }
 
-            // set relocalization frame
-            {
-                RelocinfoConstPtr relo_msg;
-                pgbuilder->m_reloc_buf.lock();
-                while (!pgbuilder->relo_buf.empty())
-                {
-                    relo_msg = pgbuilder->relo_buf.front();
-                    pgbuilder->relo_buf.pop();
-                }
-                pgbuilder->m_reloc_buf.unlock();
-                if (relo_msg!= nullptr)
-                {
-                    vector<Vector3d> match_points;
-                    double frame_stamp = relo_msg->header;
-                    for (unsigned int i = 0; i < relo_msg->uv_old_norm.size(); i++)
-                    {
-                        Vector3d u_v_id;
-                        u_v_id.x() = relo_msg->uv_old_norm[i].x();
-                        u_v_id.y() = relo_msg->uv_old_norm[i].y();
-                        u_v_id.z() = relo_msg->matched_id[i];
-                        match_points.push_back(u_v_id);
-                    }
-                    estimator->setReloFrame(frame_stamp, relo_msg->index, match_points, relo_msg->t_old, relo_msg->R_old);
-                }
-                estimator->m_loop_buf.lock();
-                if(!estimator->loop_buf.empty()){
-                    auto loop=estimator->loop_buf.front();
-                    pgbuilder->GrabRelocRelativePose(loop.first,loop.second);
-                    estimator->loop_buf.pop();
-                }
-                estimator->m_loop_buf.unlock();
-
-            }
+//            // set relocalization frame
+//            {
+//                RelocinfoConstPtr relo_msg;
+//                pgbuilder->m_reloc_buf.lock();
+//                while (!pgbuilder->relo_buf.empty())
+//                {
+//                    relo_msg = pgbuilder->relo_buf.front();
+//                    pgbuilder->relo_buf.pop();
+//                }
+//                pgbuilder->m_reloc_buf.unlock();
+//                if (relo_msg!= nullptr)
+//                {
+//                    vector<Vector3d> match_points;
+//                    double frame_stamp = relo_msg->header;
+//                    for (unsigned int i = 0; i < relo_msg->uv_old_norm.size(); i++)
+//                    {
+//                        Vector3d u_v_id;
+//                        u_v_id.x() = relo_msg->uv_old_norm[i].x();
+//                        u_v_id.y() = relo_msg->uv_old_norm[i].y();
+//                        u_v_id.z() = relo_msg->matched_id[i];
+//                        match_points.push_back(u_v_id);
+//                    }
+//                    estimator->setReloFrame(frame_stamp, relo_msg->index, match_points, relo_msg->t_old, relo_msg->R_old);
+//                }
+//                estimator->m_loop_buf.lock();
+//                if(!estimator->loop_buf.empty()){
+//                    auto loop=estimator->loop_buf.front();
+//                    pgbuilder->GrabRelocRelativePose(loop.first,loop.second);
+//                    estimator->loop_buf.pop();
+//                }
+//                estimator->m_loop_buf.unlock();
+//
+//            }
 
             map<int, vector<pair<int, Eigen::Matrix<double, 7, 1>>>> image;
             for (unsigned int i = 0; i < img_msg->points.size(); i++) 
@@ -341,15 +354,8 @@ void System::ProcessBackEnd()
             if (estimator->solver_flag == Estimator::SolverFlag::NON_LINEAR)
             {
                 if(estimator->marginalization_flag == Estimator::MARGIN_OLD){
-
-//                    double dkeystamp=estimator->Headers[0];
-//                    Eigen::Matrix3d keyR=estimator->Rs[0];
-//                    Eigen::Vector3d keyT=estimator->Ps[0];
-//                    PosestampedPtr pose(new PoseStamped(dkeystamp,keyR,keyT));
-//                    pgbuilder->GrabKeyFramePose(pose);
-
                     estimator->m_pose_graph_buf.lock();
-                    double dkeystamp;
+                    double dkeystamp=-1;
                     if(!estimator->pose_graph_factors_buf.empty()){
                         auto kf=estimator->pose_graph_factors_buf.front();
                         pgbuilder->GrabKeyFrameFactor(kf);
@@ -357,7 +363,7 @@ void System::ProcessBackEnd()
                         estimator->pose_graph_factors_buf.pop();
                     }
                     estimator->m_pose_graph_buf.unlock();
-
+                    if(dkeystamp==-1) continue;
                     Keyframe_pointsPtr kfp(new keyframe_points);
                     kfp->header=dkeystamp;
                     for (auto &idFeatures : estimator->f_manager.IDsfeatures)
@@ -384,7 +390,6 @@ void System::ProcessBackEnd()
                             kfp->norm_points.push_back(norm_p);
                             kfp->uv_points.push_back(uv_p);
                             kfp->vids.push_back(idFeatures.feature_id);
-
                         }
 
                     }
@@ -455,11 +460,18 @@ void System::Draw()
         pangolin::GlFont::I()
                 .Text("marg %s",marg.c_str()).Draw(5, 20);
 
-        if(estimator->relocalization_info){
-            glColor3f(1.0, 0.0, 0.0);
-            pangolin::GlFont::I()
-                    .Text("VIO prefrom relocation").Draw(5, 20);
-        }
+        glColor3f(1.0, 0.0, 0.0);
+        pangolin::GlFont::I()
+                .Text("Vel %f, %f, %f",estimator->para_SpeedBias[0][0],estimator->para_SpeedBias[0][1],estimator->para_SpeedBias[0][2]).Draw(10, 0);
+
+        glColor3f(1.0, 0.0, 0.0);
+        pangolin::GlFont::I()
+                .Text("Ba %f, %f, %f",estimator->para_SpeedBias[0][3],estimator->para_SpeedBias[0][4],estimator->para_SpeedBias[0][5]).Draw(15, 0);
+
+        glColor3f(1.0, 0.0, 0.0);
+        pangolin::GlFont::I()
+                .Text("Bg %f, %f, %f",estimator->para_SpeedBias[0][6],estimator->para_SpeedBias[0][7],estimator->para_SpeedBias[0][8]).Draw(20, 0);
+
 
         // points
         if (estimator->solver_flag == Estimator::SolverFlag::NON_LINEAR)

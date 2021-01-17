@@ -12,7 +12,6 @@ public:
     RollPitchFactor() = delete;
 
     RollPitchFactor(const Quaterniond Rz) : R(Rz) {
-        linearized=false;
         jacobians.resize(1);
         residual.resize(2,1);
     }
@@ -37,28 +36,17 @@ public:
         Vector3d res= Rmeas * Ri.inverse()*nZ;
         residual=res.head<2>();
         residual=sqrt_info*residual;
-//        double error=residual.transpose()*residual;
-//        if(error>0.001){
-//            cerr<<"residual of roll and pitch of "<<index<<" +++: "<<error<<endl;
-//        }
+
         if (jacobians){
             if (jacobians[0]) {
-                if(linearized){
-                    Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
-                    jacobian_pose_i.setZero();
-                    jacobian_pose_i.topLeftCorner<2,6>()=this->jacobians[0];
-                    jacobian_pose_i=sqrt_info*jacobian_pose_i;
+                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
+                jacobian_pose_i.setZero();
+                Matrix<double,3,6> J;
+                J.topLeftCorner<3,3>()= Matrix3d::Zero();
+                J.bottomRightCorner<3,3>()=Utility::skewSymmetric(Rmeas*Ri.inverse()*nZ)*Rmeas.matrix();
+                jacobian_pose_i.topLeftCorner<2,6>() =J.topLeftCorner<2,6>();
 
-                }else{
-                    Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
-                    jacobian_pose_i.setZero();
-                    Matrix<double,3,6> J;
-                    J.topLeftCorner<3,3>()= Matrix3d::Zero();
-                    J.bottomRightCorner<3,3>()=-Utility::skewSymmetric(Rmeas*Ri.inverse()*nZ)*Rmeas.matrix();
-                    jacobian_pose_i.topLeftCorner<2,6>() =J.topLeftCorner<2,6>();
-
-                    jacobian_pose_i=sqrt_info*jacobian_pose_i;
-                }
+                jacobian_pose_i=sqrt_info*jacobian_pose_i;
 
             }
         }
@@ -85,11 +73,14 @@ public:
         J.bottomRightCorner<3,3>()=Utility::skewSymmetric(Rmeas*Ri.inverse()*nZ)*Rmeas.matrix();
         jacobian_pose_i.topLeftCorner<2,6>() =J.topLeftCorner<2,6>();
         jacobians[0]=jacobian_pose_i;
-        if(!Nscheck){
-            linearized=0;
-        }
     }
 
+    void update(Matrix3d Rs,double *Qs){
+        Eigen::Quaterniond Qi(Qs[6], Qs[3], Qs[4], Qs[5]);
+        Sophus::SO3d R0(Rs),R1(Qi);
+        Vector3d delta_R=(R1.inverse()*R0).log();
+        R=R*Sophus::SO3d::exp(delta_R).matrix();
+    }
     MatrixXd Former(Matrix<double,6,1> parameters,Matrix<double,6,1> delta) const {
         Eigen::Vector3d Pi(parameters[0], parameters[1], parameters[2]);
         Sophus::SO3d Qi=Sophus::SO3d::exp(Vector3d(parameters[3], parameters[4],  parameters[5]));
@@ -102,7 +93,7 @@ public:
         Sophus::SO3d Rmeas(R);
         Vector3d nZ=-1.0*Vector3d::UnitZ();
         Vector2d res= (Rmeas * Ri.inverse()*nZ).head<2>();
-        //residual=sqrt_info*residual;
+        res=sqrt_info*res;
         //residual=sqrt_info*residual;
         return res;
 
@@ -142,7 +133,6 @@ public:
     MatrixXd sqrt_info;
     int index;
     vector<MatrixXd> jacobians;
-    bool linearized;
     VectorXd residual;
 };
 #endif //CS_VINS_ROLLPITCH_FACTOR_H

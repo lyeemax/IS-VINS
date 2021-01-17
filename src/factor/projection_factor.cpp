@@ -18,7 +18,6 @@ ProjectionFactor::ProjectionFactor(const Eigen::Vector3d &_pts_i, const Eigen::V
 #endif
     jacobians.resize(4);
     outlier= false;
-    linearized=false;
     residual.resize(2,1);
 };
 
@@ -77,72 +76,44 @@ bool ProjectionFactor::Evaluate(double const *const *parameters, double *residua
 
         if (jacobians[0])
         {
-            if(linearized){
-                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
-                jacobian_pose_i.setZero();
-                jacobian_pose_i.topLeftCorner<2,6>()=this->jacobians[0];
-                jacobian_pose_i.leftCols<6>() = sqrt_info * jacobian_pose_i.leftCols<6>();
+            Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
 
-            }else{
-                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
+            Eigen::Matrix<double, 3, 6> jaco_i;
+            jaco_i.leftCols<3>() = ric.transpose() * Rj.transpose();
+            jaco_i.rightCols<3>() = ric.transpose() * Rj.transpose() * Ri * -Utility::skewSymmetric(pts_imu_i);
 
-                Eigen::Matrix<double, 3, 6> jaco_i;
-                jaco_i.leftCols<3>() = ric.transpose() * Rj.transpose();
-                jaco_i.rightCols<3>() = ric.transpose() * Rj.transpose() * Ri * -Utility::skewSymmetric(pts_imu_i);
-
-                jacobian_pose_i.leftCols<6>() = reduce * jaco_i;
-                jacobian_pose_i.rightCols<1>().setZero();
-            }
+            jacobian_pose_i.leftCols<6>() = reduce * jaco_i;
+            jacobian_pose_i.rightCols<1>().setZero();
 
         }
 
         if (jacobians[1])
         {
-            if(linearized){
-                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_j(jacobians[1]);
-                jacobian_pose_j.setZero();
-                jacobian_pose_j.topLeftCorner<2,6>()=this->jacobians[1];
-                jacobian_pose_j.leftCols<6>() = sqrt_info * jacobian_pose_j.leftCols<6>();
-            }else{
-                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_j(jacobians[1]);
+            Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_pose_j(jacobians[1]);
 
-                Eigen::Matrix<double, 3, 6> jaco_j;
-                jaco_j.leftCols<3>() = ric.transpose() * -Rj.transpose();
-                jaco_j.rightCols<3>() = ric.transpose() * Utility::skewSymmetric(pts_imu_j);
+            Eigen::Matrix<double, 3, 6> jaco_j;
+            jaco_j.leftCols<3>() = ric.transpose() * -Rj.transpose();
+            jaco_j.rightCols<3>() = ric.transpose() * Utility::skewSymmetric(pts_imu_j);
 
-                jacobian_pose_j.leftCols<6>() = reduce * jaco_j;
-                jacobian_pose_j.rightCols<1>().setZero();
-            }
+            jacobian_pose_j.leftCols<6>() = reduce * jaco_j;
+            jacobian_pose_j.rightCols<1>().setZero();
 
         }
         if (jacobians[2])
         {
-            if(linearized){
-                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_ex_pose(jacobians[2]);
-                jacobian_ex_pose.setZero();
-                jacobian_ex_pose.topLeftCorner<2,6>()=this->jacobians[2];
-                jacobian_ex_pose.leftCols<6>() = sqrt_info * jacobian_ex_pose.leftCols<6>();
-            }else{
-                Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_ex_pose(jacobians[2]);
-                Eigen::Matrix<double, 3, 6> jaco_ex;
-                jaco_ex.leftCols<3>() = ric.transpose() * (Rj.transpose() * Ri - Eigen::Matrix3d::Identity());
-                Eigen::Matrix3d tmp_r = ric.transpose() * Rj.transpose() * Ri * ric;
-                jaco_ex.rightCols<3>() = -tmp_r * Utility::skewSymmetric(pts_camera_i) + Utility::skewSymmetric(tmp_r * pts_camera_i) +
-                                         Utility::skewSymmetric(ric.transpose() * (Rj.transpose() * (Ri * tic + Pi - Pj) - tic));
-                jacobian_ex_pose.leftCols<6>() = reduce * jaco_ex;
-                jacobian_ex_pose.rightCols<1>().setZero();
-            }
+            Eigen::Map<Eigen::Matrix<double, 2, 7, Eigen::RowMajor>> jacobian_ex_pose(jacobians[2]);
+            Eigen::Matrix<double, 3, 6> jaco_ex;
+            jaco_ex.leftCols<3>() = ric.transpose() * (Rj.transpose() * Ri - Eigen::Matrix3d::Identity());
+            Eigen::Matrix3d tmp_r = ric.transpose() * Rj.transpose() * Ri * ric;
+            jaco_ex.rightCols<3>() = -tmp_r * Utility::skewSymmetric(pts_camera_i) + Utility::skewSymmetric(tmp_r * pts_camera_i) +
+                                     Utility::skewSymmetric(ric.transpose() * (Rj.transpose() * (Ri * tic + Pi - Pj) - tic));
+            jacobian_ex_pose.leftCols<6>() = reduce * jaco_ex;
+            jacobian_ex_pose.rightCols<1>().setZero();
         }
         if (jacobians[3])
         {
-            if(linearized){
-                Eigen::Map<Eigen::Vector2d> jacobian_feature(jacobians[3]);
-                jacobian_feature.setZero();
-                jacobian_feature=sqrt_info*this->jacobians[3];
-            }else{
-                Eigen::Map<Eigen::Vector2d> jacobian_feature(jacobians[3]);
-                jacobian_feature = reduce * ric.transpose() * Rj.transpose() * Ri * ric * pts_i * -1.0 / (inv_dep_i * inv_dep_i);
-            }
+            Eigen::Map<Eigen::Vector2d> jacobian_feature(jacobians[3]);
+            jacobian_feature = reduce * ric.transpose() * Rj.transpose() * Ri * ric * pts_i * -1.0 / (inv_dep_i * inv_dep_i);
         }
     }
     sum_t += tic_toc.toc();
@@ -222,7 +193,6 @@ void ProjectionFactor::EvaluateOnlyJacobians(double const *PSi,double const *PSj
         jacobians[3]=jacobian_feature;
 
     }
-    linearized=0;
 }
 void ProjectionFactor::check(double **parameters)
 {
