@@ -9,7 +9,7 @@ Followings are main contributions in this work:
 
 1. Frontend is optic flow based method just like VINS-MONO but simplified.
 
-2. VIO is performed in two stage marginalization and sparsification,which turns VIO to be a combanation of VO and VIO.
+2. VIO is performed in two stages marginalization and sparsification,which turns VIO to be a combanation of VO and VIO.
 
 3. Pose graph optimization reuses information of VO with gravity observation and relative pose prior and performs with loop-closure information. So it's able to evaluate covariance of camera pose online. 
 
