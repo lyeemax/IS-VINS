@@ -16,8 +16,8 @@ KeyFrame::KeyFrame(CombinedFactors *factor, const cv::Mat &_image, vector<cv::Po
     keyfactor=factor;
     time_stamp = factor->ts;
     index =factor->pg_index;
-    vio_T_w_i = factor->t;
-    vio_R_w_i = factor->R;
+    vio_T_w_i = factor->ti;
+    vio_R_w_i = factor->Ri;
     T_w_i = vio_T_w_i;
     R_w_i = vio_R_w_i;
     origin_vio_T = vio_T_w_i;
@@ -207,6 +207,23 @@ void KeyFrame::PnPRANSAC(const vector<cv::Point2f> &matched_2d_old_norm,
     PnP_R_old = R_w_c_old * RIC[0].transpose();
     PnP_T_old = T_w_c_old - PnP_R_old * TIC[0];
 
+    double res=0;
+    int m=0;
+    for (int i = 0; i <status.size() ; ++i) {
+        if(status[i]){
+            m++;
+            Vector3d uv(matched_2d_old_norm[i].x,matched_2d_old_norm[i].y,1);
+            Vector3d p(matched_3d[i].x,matched_3d[i].y,matched_3d[i].z);
+            Vector3d p_=R_pnp*(p-T_w_c_old);
+            p_=(1.0/p_.z())*p_;
+            res+=((uv-p_)/double(FOCAL_LENGTH)).norm();
+        }
+    }
+    if(res>0 &&m>6){
+        loop_weight=(m-6)/(res*res);
+    }else{
+        loop_weight=0;
+    }
 }
 
 

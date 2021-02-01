@@ -161,8 +161,8 @@ void PoseGraphBuilder::process()
 //                    cout<<"PoseGraph index "<<accumFactor->pg_index<<endl;
 //                    cout<<"GV info ::"<<endl<<accumFactor->rollPitchFactor->sqrt_info<<endl;
 
-                    Eigen::Matrix3d R=accumFactor->R;
-                    Eigen::Vector3d T=accumFactor->t;
+                    Eigen::Matrix3d R=accumFactor->Ri;
+                    Eigen::Vector3d T=accumFactor->ti;
 
                     vector<cv::Point3f> point_3d;
                     vector<cv::Point2f> point_2d_uv;
@@ -191,7 +191,15 @@ void PoseGraphBuilder::process()
                         //printf("u %f, v %f \n", p_2d_uv.x, p_2d_uv.y);
                     }
 
+                    if(last_kf){
+                        Matrix3d Rj=last_kf->origin_vio_R*last_kf->keyfactor->relativePoseFactor->delta_R;
+                        Vector3d tj=last_kf->origin_vio_T+last_kf->origin_vio_R*last_kf->keyfactor->relativePoseFactor->delta_t;
+                        last_kf->keyfactor->relativePoseFactor->update(last_kf->origin_vio_T, last_kf->origin_vio_R,
+                                                                       tj, Rj,
+                                                                       accumFactor->ti, accumFactor->Ri);
+                    }
                     KeyFrame* keyframe = new KeyFrame(accumFactor,image_msg->img,point_3d,point_2d_uv,point_2d_normal,point_id,sequence);
+                    last_kf=keyframe;
                     m_process.lock();
                     start_flag = 1;
                     posegraph.addKeyFrame(keyframe, true);

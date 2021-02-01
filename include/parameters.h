@@ -20,7 +20,6 @@ extern std::string FISHEYE_MASK;
 extern std::vector<std::string> CAM_NAMES;
 extern int MAX_CNT;
 extern int MIN_DIST;
-// extern int Vo_SIZE;
 extern int FREQ;
 extern double F_THRESHOLD;
 extern int SHOW_TRACK;

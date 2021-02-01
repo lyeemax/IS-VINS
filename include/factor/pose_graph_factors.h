@@ -13,8 +13,8 @@ struct CombinedFactors{
     Eigen::MatrixXd covAbs;
     double distance;
     double ts;
-    Eigen::Matrix3d R;
-    Eigen::Vector3d t;
+    Eigen::Matrix3d Ri;
+    Eigen::Vector3d ti;
 
     CombinedFactors(long index=0){
         vio_index=-1;
@@ -42,8 +42,8 @@ struct CombinedFactors{
         length++;
 
         if(vio_index==-1){
-            t=other.t;
-            R=other.R;
+            ti=other.ti;
+            Ri=other.Ri;
             vio_index=other.vio_index;
             ts=other.ts;
         }

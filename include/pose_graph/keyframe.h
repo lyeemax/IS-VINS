@@ -96,6 +96,7 @@ public:
 
 	bool has_loop;
 	int loop_index;
+	double loop_weight;
 	Eigen::Matrix<double, 8, 1 > loop_info;
     RelocinfoPtr relc_info;
     CombinedFactors *keyfactor;

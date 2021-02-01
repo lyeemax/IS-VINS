@@ -69,6 +69,7 @@ public:
     int frame_index  = 0;
     int sequence = 1;
     PoseGraph posegraph;
+    KeyFrame *last_kf;
     int skip_first_cnt = 0;
     int SKIP_CNT;
     int skip_cnt = 0;

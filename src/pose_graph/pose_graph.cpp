@@ -331,7 +331,8 @@ void PoseGraph::optimizeCS() {
                     assert((*it)->loop_index >= first_looped_index);
                     int connected_index = getKeyFrame((*it)->loop_index)->local_index;
                     RelativePoseFactor* relocfactor=new RelativePoseFactor((*it)->getLoopRelativeT(),(*it)->getLoopRelativeQ().toRotationMatrix());
-                    relocfactor->sqrt_info=1e5*Eigen::Matrix<double,6,6>::Identity();
+                    relocfactor->sqrt_info=(*it)->loop_weight*Eigen::Matrix<double,6,6>::Identity();
+                    cerr<<"loop weight "<<(*it)->loop_weight<<endl;
                     problem.AddResidualBlock(relocfactor, loss_function, pose_array[connected_index], pose_array[li]);
                 }
 

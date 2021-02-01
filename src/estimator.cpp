@@ -1274,8 +1274,8 @@ void Estimator::MargForward() {
     cmbfactors->distance=pgRaltivePoseFactor->delta_t.norm();
     cmbfactors->covRel= rpCov;
     cmbfactors->ts=Headers[0];
-    cmbfactors->R=Rs[0];
-    cmbfactors->t=Ps[0];
+    cmbfactors->Ri=Rs[0];
+    cmbfactors->ti=Ps[0];
     PoseGraphFactorCount++;
 
     m_pose_graph_buf.lock();

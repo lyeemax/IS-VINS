@@ -78,7 +78,7 @@ public:
 
 
         Matrix3d Rj(Qj),Ri(Qi);
-        Vector3d res_t=delta_t-(Pj-Pi);
+        Vector3d res_t=delta_t-Qi.inverse()*(Pj-Pi);
         Sophus::SO3d res_R(delta_R*Rj.transpose()*Ri);
         residual.head<3>()=res_t;
         residual.tail<3>()=res_R.log();
@@ -115,6 +115,14 @@ public:
         delta_R=delta_R*Sophus::SO3d::exp(Ji*d_Ri.log()).matrix();
         delta_R=delta_R*Sophus::SO3d::exp(d_Rj.log()).matrix();
     }
+
+    void update(Vector3d ti,Matrix3d Ri,Vector3d tj,Matrix3d Rj,Eigen::Vector3d Pj,Eigen::Matrix3d Qj){
+        Vector3d d_tj=Pj-tj;
+        Sophus::SO3d d_Rj=Sophus::SO3d(Qj.inverse()*Rj);
+        delta_t+=Ri.transpose()*d_tj;
+        delta_R=delta_R*Sophus::SO3d::exp(d_Rj.log()).matrix();
+    }
+
     void shift(){
         imu_i--;
         imu_j--;
