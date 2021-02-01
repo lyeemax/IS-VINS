@@ -827,7 +827,7 @@ void Estimator::initFactorGraph(){
         Psj<<para_Pose[j][0], para_Pose[j][1], para_Pose[j][2];
         Quaterniond Qi(para_Pose[i][6], para_Pose[i][3], para_Pose[i][4], para_Pose[i][5]);
         Quaterniond Qj(para_Pose[j][6], para_Pose[j][3], para_Pose[j][4], para_Pose[j][5]);
-        Vector3d tij=Psj-Psi;
+        Vector3d tij=Qi.inverse()*(Psj-Psi);
         Matrix3d Rij=(Qi.inverse()*Qj).toRotationMatrix();
 
         RelativePoseFactor* relativePoseFactor(new RelativePoseFactor(tij,Rij));
@@ -946,7 +946,7 @@ void Estimator::initFactorGraph(){
         MatrixXd Ji=Jr.block(hdim,0,row, 6 * Vo_SIZE + 9);
         MatrixXd covi=(Ji * U * Dinv * (Ji * U).transpose());
         infoVec.emplace_back(covi.inverse(),hdim);
-        cout<<"vioRelativePose "<<endl<<covi.inverse()<<endl;
+        //cout<<"vioRelativePose "<<endl<<covi.inverse()<<endl;
         vioRelativePoseEdges[i]->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(covi.inverse()).matrixL().transpose();
         hdim+=row;
     }
@@ -956,7 +956,7 @@ void Estimator::initFactorGraph(){
         MatrixXd Ji=Jr.block(hdim,0,row, 6 * Vo_SIZE + 9);
         MatrixXd covi=(Ji * U * Dinv * (Ji * U).transpose());
         infoVec.emplace_back(covi.inverse(),hdim);
-        cout<<"vioPosePrior "<<endl<<covi.inverse()<<endl;
+        //cout<<"vioPosePrior "<<endl<<covi.inverse()<<endl;
         vioPosePriorEdge->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(covi.inverse()).matrixL().transpose();
         hdim+=row;
     }
@@ -966,7 +966,7 @@ void Estimator::initFactorGraph(){
         MatrixXd Ji=Jr.block(hdim,0,row, 6 * Vo_SIZE + 9);
         MatrixXd covi=(Ji * U * Dinv * (Ji * U).transpose());
         infoVec.emplace_back(covi.inverse(),hdim);
-        cout<<"vioVBPrior "<<endl<<covi.inverse()<<endl;
+        //cout<<"vioVBPrior "<<endl<<covi.inverse()<<endl;
         vioVBPrior->sqrt_info=Eigen::LLT<Eigen::MatrixXd>(covi.inverse()).matrixL().transpose();
         hdim+=row;
     }
@@ -985,7 +985,7 @@ void Estimator::initFactorGraph(){
     double b=log(A.determinant());
     double c=log(Dinv.determinant());
     double kld=0.5*(a-b-c-asize);
-    cout<<"init KLD is "<<kld<<endl;
+    //cout<<"init KLD is "<<kld<<endl;
 
 
 
@@ -1036,7 +1036,7 @@ void Estimator::problemSolve()
         }
     }
 
-//    for (int i = Vo_SIZE - 1; i < ALL_BUF_SIZE - 1; i++)
+    //for (int i =Vo_SIZE - 1 ; i < ALL_BUF_SIZE - 1; i++)
     for (int i = 0; i < ALL_BUF_SIZE - 1; i++)
     {
         int j = i + 1;
@@ -1099,16 +1099,16 @@ void Estimator::problemSolve()
     //cout<<marglandmarks<<" landmarks marginalized"<<endl;
 
     //add head pose factor#TODO BAD FACTOR!!!
-    problem.AddResidualBlock(vioPosePriorEdge, bigloss, para_Pose[0]);
+    problem.AddResidualBlock(vioPosePriorEdge, loss_function, para_Pose[0]);
 
     //add VB prior factor
-    problem.AddResidualBlock(vioVBPrior, bigloss, para_SpeedBias[Vo_SIZE - 1]);
+    problem.AddResidualBlock(vioVBPrior, loss_function, para_SpeedBias[Vo_SIZE - 1]);
 
     //add relative pose factor
     for (int i = 0; i < vioRelativePoseEdges.size() - 1 ; ++i) {
         int j=i+1;
         auto factor=vioRelativePoseEdges[j];
-        problem.AddResidualBlock(factor,bigloss,para_Pose[i],para_Pose[j]);
+        problem.AddResidualBlock(factor,loss_function,para_Pose[i],para_Pose[j]);
     }
     for (int i = 0; i <vioRollPitchEdges.size() ; ++i) {
         auto factor=vioRollPitchEdges[i];
@@ -1126,7 +1126,7 @@ void Estimator::problemSolve()
     TicToc t_solver;
     ceres::Solver::Summary summary;
     ceres::Solve(options, &problem, &summary);
-    cout<<summary.BriefReport()<<endl;
+    //cout<<summary.BriefReport()<<endl;
 
 
     //update pseudo-measurement
@@ -1246,7 +1246,7 @@ void Estimator::MargForward() {
     Psj<<para_Pose[1][0], para_Pose[1][1], para_Pose[1][2];
     Quaterniond Qi(para_Pose[0][6], para_Pose[0][3], para_Pose[0][4], para_Pose[0][5]);
     Quaterniond Qj(para_Pose[1][6], para_Pose[1][3], para_Pose[1][4], para_Pose[1][5]);
-    Vector3d tij=Psj-Psi;
+    Vector3d tij=Qi.inverse()*(Psj-Psi);
     Matrix3d Rij=(Qi.inverse()*Qj).toRotationMatrix();
     RelativePoseFactor *pgRaltivePoseFactor=new RelativePoseFactor(tij,Rij);
     pgRaltivePoseFactor->EvaluateOnlyJacobians(para_Pose[0],para_Pose[1]);
@@ -1429,7 +1429,7 @@ void Estimator::MargBackward(){
     Psj<<para_Pose[Vo_SIZE][0], para_Pose[Vo_SIZE][1], para_Pose[Vo_SIZE][2];
     Quaterniond Qi(para_Pose[Vo_SIZE - 1][6], para_Pose[Vo_SIZE - 1][3], para_Pose[Vo_SIZE - 1][4], para_Pose[Vo_SIZE - 1][5]);
     Quaterniond Qj(para_Pose[Vo_SIZE][6], para_Pose[Vo_SIZE][3], para_Pose[Vo_SIZE][4], para_Pose[Vo_SIZE][5]);
-    Vector3d tij=Psj-Psi;
+    Vector3d tij=Qi.inverse()*(Psj-Psi);
     Matrix3d Rij=(Qi.inverse()*Qj).toRotationMatrix();
 
     RelativePoseFactor* relativePoseFactor=new RelativePoseFactor(tij,Rij);
@@ -1531,7 +1531,7 @@ void Estimator::MargBackward(){
     double b=log(A.determinant());
     double c=log(Dinv.determinant());
     double kld=0.5*(a-b-c-21);
-    cout<<"backward KLD is "<<kld<<endl;
+    //cout<<"backward KLD is "<<kld<<endl;
 
     vioRollPitchEdges.push_back(rollPitchFactor);
     backwardVBEdgeToAdd=speedBiasPrior;

@@ -80,6 +80,7 @@ class Estimator
         MARGIN_OLD = 0,
         MARGIN_NEW = 1
     };
+    int step=0;
     SolverFlag solver_flag;
     MarginalizationFlag  marginalization_flag;
     Vector3d g;

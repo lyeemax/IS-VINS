@@ -36,7 +36,7 @@ public:
         Eigen::Map<Eigen::Matrix<double, 6, 1>> residual(residuals);
         
         Matrix3d Rj(Qj),Ri(Qi);
-        Vector3d res_t=delta_t-(Pj-Pi);
+        Vector3d res_t=delta_t-Qi.inverse()*(Pj-Pi);
         Sophus::SO3d res_R(delta_R*Rj.transpose()*Ri);
         residual.head<3>()=res_t;
         residual.tail<3>()=res_R.log();
@@ -49,14 +49,15 @@ public:
             if (jacobians[0]) {
                 Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_i(jacobians[0]);
                 jacobian_pose_i.setZero();
-                jacobian_pose_i.block<3,3>(0,0)=Matrix3d::Identity();
+                jacobian_pose_i.block<3,3>(0,0)=Ri.transpose();
+                jacobian_pose_i.block<3,3>(0,3)=-Utility::skewSymmetric(Qi.inverse()*(Pj-Pi));
                 jacobian_pose_i.block<3,3>(3,3)=J;
                 jacobian_pose_i=sqrt_info*jacobian_pose_i;
             }
             if(jacobians[1]){
                 Eigen::Map<Eigen::Matrix<double, 6, 7, Eigen::RowMajor>> jacobian_pose_j(jacobians[1]);
                 jacobian_pose_j.setZero();
-                jacobian_pose_j.block<3,3>(0,0)=-Matrix3d::Identity();
+                jacobian_pose_j.block<3,3>(0,0)=-Ri.transpose();
                 jacobian_pose_j.block<3,3>(3,3)=-J*Ri.transpose()*Rj;
                 jacobian_pose_j=sqrt_info*jacobian_pose_j;
 
@@ -86,21 +87,20 @@ public:
         Sophus::rightJacobianInvSO3(res_R.log(),J);
         Eigen::Matrix<double, 6, 6> jacobian_pose_i;
         jacobian_pose_i.setZero();
-        jacobian_pose_i.block<3,3>(0,0)=Matrix3d::Identity();
+        jacobian_pose_i.block<3,3>(0,0)=Ri.transpose();
+        jacobian_pose_i.block<3,3>(0,3)=-Utility::skewSymmetric(Qi.inverse()*(Pj-Pi));
         jacobian_pose_i.block<3,3>(3,3)=J;
         jacobians[0]=jacobian_pose_i;
 
         Eigen::Matrix<double, 6, 6> jacobian_pose_j;
         jacobian_pose_j.setZero();
-        jacobian_pose_j.block<3,3>(0,0)=-Matrix3d::Identity();
+        jacobian_pose_j.block<3,3>(0,0)=-Ri.transpose();
         jacobian_pose_j.block<3,3>(3,3)=-J*Ri.transpose()*Rj;
         jacobians[1]=jacobian_pose_j;
 
     }
 
     void update(Vector3d ti,Matrix3d Ri,Vector3d tj,Matrix3d Rj,double *PSi,double *PSj){
-//        Vector3d tij=Psj-Psi;
-//        Matrix3d Rij=(Qi.inverse()*Qj).toRotationMatrix();
         Eigen::Vector3d Pi(PSi[0], PSi[1], PSi[2]);
         Eigen::Quaterniond Qi(PSi[6], PSi[3], PSi[4], PSi[5]);
         Eigen::Vector3d Pj(PSj[0], PSj[1], PSj[2]);
@@ -110,7 +110,7 @@ public:
         Sophus::SO3d d_Rj=Sophus::SO3d(Qj.inverse()*Rj);
         Sophus::SO3d d_Ri=Sophus::SO3d(Qi.inverse()*Ri);
 
-        delta_t+=d_tj-d_ti;
+        delta_t+=Ri.transpose()*d_tj-Ri.transpose()*d_ti+Utility::skewSymmetric(delta_t)*d_Ri.log();
         MatrixXd Ji=-(Qj.inverse()*Qi).toRotationMatrix();
         delta_R=delta_R*Sophus::SO3d::exp(Ji*d_Ri.log()).matrix();
         delta_R=delta_R*Sophus::SO3d::exp(d_Rj.log()).matrix();
@@ -134,7 +134,7 @@ public:
         Qj=Qj*Sophus::SO3d ::exp(delta.tail<6>().tail<3>());
         Eigen::Matrix<double, 6, 1> residual;
         Matrix3d Rj(Qj.matrix()),Ri(Qi.matrix());
-        Vector3d res_t=delta_t-(Pj-Pi);
+        Vector3d res_t=delta_t-Qi.inverse()*(Pj-Pi);
         Sophus::SO3d res_R(delta_R*Rj.transpose()*Ri);
         residual.head(3)=res_t;
         residual.tail(3)=res_R.log();

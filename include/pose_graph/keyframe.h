@@ -15,7 +15,7 @@
 #include <msg/msgtype.h>
 #include "factor/pose_graph_factors.h"
 
-#define MIN_LOOP_NUM 25
+#define MIN_LOOP_NUM 15
 
 using namespace Eigen;
 using namespace std;

@@ -33,6 +33,7 @@ struct CombinedFactors{
 
 
 
+
         delete relativePoseFactor;
         relativePoseFactor=new RelativePoseFactor((T0*T1).translation(),(T0*T1).rotationMatrix());
         relativePoseFactor->sqrt_info=Eigen::LLT<MatrixXd>(covRel.inverse()).matrixL().transpose();
@@ -44,6 +45,7 @@ struct CombinedFactors{
             t=other.t;
             R=other.R;
             vio_index=other.vio_index;
+            ts=other.ts;
         }
         return *this;
     }

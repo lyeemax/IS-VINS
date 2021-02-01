@@ -136,21 +136,21 @@ void PoseGraphBuilder::process()
                 //printf(" point time %f \n", point_msg.first);
                 //printf(" image time %f \n", image_msg.first);
                 // skip fisrt few
-                if (skip_first_cnt < SKIP_FIRST_CNT)
-                {
-                    skip_first_cnt++;
-                    continue;
-                }
-
-                if (skip_cnt < SKIP_CNT)
-                {
-                    skip_cnt++;
-                    continue;
-                }
-                else
-                {
-                    skip_cnt = 0;
-                }
+//                if (skip_first_cnt < SKIP_FIRST_CNT)
+//                {
+//                    skip_first_cnt++;
+//                    continue;
+//                }
+//
+//                if (skip_cnt < SKIP_CNT)
+//                {
+//                    skip_cnt++;
+//                    continue;
+//                }
+//                else
+//                {
+//                    skip_cnt = 0;
+//                }
 
                 // build keyframe
                 currentFactor=factor_msg;
@@ -245,13 +245,12 @@ void PoseGraphBuilder::Draw()
         posegraph.m_keyframelist.lock();
         list<KeyFrame*>::iterator it;
 
-        Vector3d P,lastP=Eigen::Vector3d::Zero();
-        Matrix3d R;
-        std :: ofstream ofs("./loop_pose_output.txt",std :: ios :: out | std :: ios :: trunc);
+        Vector3d P=Eigen::Vector3d::Zero(),lastP=Eigen::Vector3d::Zero();
+        Matrix3d R=Eigen::Matrix3d::Identity();
         for (it = posegraph.keyframelist.begin(); it != posegraph.keyframelist.end(); it++)
         {
 
-            (*it)->getPose(P, R);
+           (*it)->getPose(P, R);
             Quaterniond Q;
             Q = R;
             // draw poses
@@ -267,10 +266,6 @@ void PoseGraphBuilder::Draw()
             Quaterniond q_wi;
             q_wi =R;
             p_wi =P;
-            double dStamp =(*it)->time_stamp;
-            ofs << fixed << dStamp << " " << p_wi(0) << " " << p_wi(1) << " " << p_wi(2) << " "
-                     << q_wi.w() << " " << q_wi.x() << " " << q_wi.y() << " " << q_wi.z() << endl;
-
 
             if (SHOW_L_EDGE)
             {
@@ -297,7 +292,6 @@ void PoseGraphBuilder::Draw()
             lastP=P;
 
         }
-        ofs.close();
         posegraph.m_keyframelist.unlock();
 
         pangolin::FinishFrame();
