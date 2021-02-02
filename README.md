@@ -13,7 +13,8 @@ Followings are main contributions in this work:
 
 3. Pose graph optimization reuses information of VO with gravity observation and relative pose prior and performs with loop-closure information. So it's able to evaluate covariance of camera pose online. 
 
-<img src="https://github.com/lyeemax/IS-VINS/blob/main/others/image1.png" alt="euroc_MH_05" width="480" height="360" border="10" /><br/>
+<img src="https://github.com/lyeemax/IS-VINS/blob/main/others/image1.png" alt="euroc_MH_05" width="480" height="360" border="10" /><img src="https://github.com/lyeemax/IS-VINS/blob/main/others/posegraph.png" alt="euroc_MH_05" width="480" height="360" border="10" />
+
 
 ***Authors：***: Jixiang Ma(unicorn@hust.edu.cn) also seeking for a job in SLAM、VIO
 
