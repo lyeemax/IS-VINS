@@ -32,6 +32,7 @@ KeyFrame::KeyFrame(CombinedFactors *factor, const cv::Mat &_image, vector<cv::Po
     loop_index = -1;
     sequence = _sequence;
     has_fast_point = false;
+    cov_computed= false;
     loop_info << 0, 0, 0, 0, 0, 0, 0, 0;
     computeWindowBRIEFPoint();
     computeBRIEFPoint();
@@ -270,7 +271,7 @@ bool KeyFrame::findConnection(KeyFrame* old_kf)
 	    reduceVector(matched_id, status);
 	}
 
-	if ((int)matched_2d_cur.size() > MIN_LOOP_NUM)
+	if ((int)matched_2d_cur.size() > 0.6*MIN_LOOP_NUM)
 	{
 	    relative_t = PnP_R_old.transpose() * (origin_vio_T - PnP_T_old);
 	    relative_q = PnP_R_old.transpose() * origin_vio_R;
@@ -319,6 +320,7 @@ void KeyFrame::updatePose(const Eigen::Vector3d &_T_w_i, const Eigen::Matrix3d &
     R_w_i = _R_w_i;
 }
 
+
 void KeyFrame::updateVioPose(const Eigen::Vector3d &_T_w_i, const Eigen::Matrix3d &_R_w_i)
 {
 	vio_T_w_i = _T_w_i;
@@ -327,6 +329,10 @@ void KeyFrame::updateVioPose(const Eigen::Vector3d &_T_w_i, const Eigen::Matrix3
 	R_w_i = vio_R_w_i;
 }
 
+void KeyFrame::updateCov(const MatrixXd &pose_cov) {
+    cov=pose_cov;
+    cov_computed=true;
+}
 Eigen::Vector3d KeyFrame::getLoopRelativeT()
 {
     return Eigen::Vector3d(loop_info(0), loop_info(1), loop_info(2));

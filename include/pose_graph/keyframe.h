@@ -65,6 +65,7 @@ public:
 	void getPose(Eigen::Vector3d &_T_w_i, Eigen::Matrix3d &_R_w_i);
 	void updatePose(const Eigen::Vector3d &_T_w_i, const Eigen::Matrix3d &_R_w_i);
 	void updateVioPose(const Eigen::Vector3d &_T_w_i, const Eigen::Matrix3d &_R_w_i);
+	void updateCov(const MatrixXd &pose_cov);
 
 	Eigen::Vector3d getLoopRelativeT();
 	Eigen::Quaterniond getLoopRelativeQ();
@@ -100,5 +101,7 @@ public:
 	Eigen::Matrix<double, 8, 1 > loop_info;
     RelocinfoPtr relc_info;
     CombinedFactors *keyfactor;
+    Matrix<double,6,6> cov;
+    bool cov_computed;
 };
 

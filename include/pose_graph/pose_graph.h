@@ -33,6 +33,7 @@ class PoseGraph
 {
 public:
 	PoseGraph();
+	~PoseGraph();
 	void addKeyFrame(KeyFrame* cur_kf, bool flag_detect_loop);
 	void loadVocabulary(std::string voc_path);
 	void updateKeyFrameLoop(int index, Eigen::Matrix<double, 8, 1 > &_loop_info);

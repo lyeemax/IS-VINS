@@ -155,7 +155,7 @@ void PoseGraphBuilder::process()
                 // build keyframe
                 currentFactor=factor_msg;
                 *accumFactor=(*accumFactor)+(*currentFactor);
-                if(accumFactor->distance>SKIP_DIS){
+                if(accumFactor->distance>0.1){
                     //debug
 //                    cout<<"test--------------------"<<endl;
 //                    cout<<"PoseGraph index "<<accumFactor->pg_index<<endl;
@@ -227,18 +227,18 @@ void PoseGraphBuilder::process()
 void PoseGraphBuilder::Draw()
 {
     // create pangolin window and plot the trajectory
-    pangolin::CreateWindowAndBind("PoseGraph Viewer", 1024, 768);
+    pangolin::CreateWindowAndBind("PoseGraph Viewer", 1920, 1080);
     glEnable(GL_DEPTH_TEST);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
     s_cam = pangolin::OpenGlRenderState(
-            pangolin::ProjectionMatrix(1024, 768, 500, 500, 512, 384, 0.1, 1000),
+            pangolin::ProjectionMatrix(1920, 1080, 500, 500, 512, 384, 0.1, 1000),
             pangolin::ModelViewLookAt(-5, 0, 15, 7, 0, 0, 1.0, 0.0, 0.0)
     );
 
     d_cam = pangolin::CreateDisplay()
-            .SetBounds(0.0, 1.0, pangolin::Attach::Pix(175), 1.0, -1024.0f / 768.0f)
+            .SetBounds(0.0, 1.0, pangolin::Attach::Pix(175), 1.0, -1920.0f / 1080.0f)
             .SetHandler(new pangolin::Handler3D(s_cam));
 
     while (pangolin::ShouldQuit() == false && !terminate) {
@@ -268,6 +268,37 @@ void PoseGraphBuilder::Draw()
             glVertex3f(lastP.x(),lastP.y(),lastP.z());
             glVertex3f(P.x(),P.y(),P.z());
             glEnd();
+
+            if((*it)->cov_computed){
+                //cerr<<"cov_computed: "<<(*it)->index<<endl;
+                auto cov=(*it)->cov;
+                Eigen::SelfAdjointEigenSolver<Eigen::Matrix<double,6,6>> SAE(cov);
+                Vector3d xyz=SAE.eigenvalues().tail<3>();
+                MatrixXd ev=SAE.eigenvectors().real().rightCols(3);
+
+                double thex=atan(ev(1,0)/ev(0,0));
+                Eigen::Matrix3d R1=Eigen::AngleAxisd(thex,Eigen::Vector3d::UnitZ()).toRotationMatrix();
+                vector<Vector3d> ells;
+                float res=5*M_PI/180.0;
+                for (int j = 0; j <180 ; ++j) {
+                    float x=10.0*sqrt(7.9*xyz.x())*cos(2.0*float(j)*res);
+                    float y=10.0*sqrt(7.9*xyz.y())*sin(2.0*float(j)*res);
+                    Vector3d ell=R1*Vector3d(x,y,0)+Vector3d(P.x(),P.y(),P.z());
+                    ells.push_back(ell);
+                }
+
+                for (int i = 0; i <ells.size()-1 ; ++i) {
+                    int j=i+1;
+                    glColor3f(0, 1, 0);
+                    glLineWidth(2);
+                    glBegin(GL_LINES);
+                    glVertex3f(ells[i].x(),ells[i].y(),ells[i].z());
+                    glVertex3f(ells[j].x(),ells[j].y(),ells[j].z());
+                    glEnd();
+                }
+
+
+            }
 
 
             Vector3d p_wi;
@@ -303,6 +334,6 @@ void PoseGraphBuilder::Draw()
         posegraph.m_keyframelist.unlock();
 
         pangolin::FinishFrame();
-        usleep(5000);   // sleep 5 ms
+        usleep(5);   // sleep 5 ms
     }
 }
