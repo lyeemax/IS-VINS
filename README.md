@@ -16,11 +16,11 @@ Followings are main contributions in this work:
 <img src="https://github.com/lyeemax/IS-VINS/blob/main/others/image1.png" alt="euroc_MH_05" width="480" height="360" border="10" /><img src="https://github.com/lyeemax/IS-VINS/blob/main/others/posegraph.png" alt="euroc_MH_05" width="480" height="360" border="10" />
 
 
-***Authors：***: Jixiang Ma(unicorn@hust.edu.cn) also seeking for a job in SLAM、VIO
+***Authors：***: Jixiang Ma(unicorn@hust.edu.cn)
 
 **Related Papers：**
 
-**To be released soon**, Jixiang Ma, Suijun Zheng,Yong Xie. IEEE/RSJ Robotics and Automation Letters,In Press.
+**Efficient and Consistent Sparsification of Visual Inertial SLAM **, Jixiang Ma, Suijun Zheng,Yong Xie. IEEE Transactions on Automation Science and Engineering （TASE）,In Press.
 
 Installation
 ------------
